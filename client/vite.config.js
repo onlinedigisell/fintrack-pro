@@ -26,6 +26,15 @@ export default defineConfig({
   },
   build: {
     outDir: '../dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          charts: ['recharts'],
+          supabase: ['@supabase/supabase-js']
+        }
+      }
+    }
   }
 });

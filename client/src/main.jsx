@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, PiggyBank, Plus, RefreshCcw, Search, Settings, Smartphone, Trash2, WalletCards } from 'lucide-react';
-import { api, exportCsv, importCsv, isSupabaseMode } from './api';
+import { api, exportCsv, importCsv, isSupabaseMode, supabase } from './api';
 import './styles.css';
 
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -65,6 +65,7 @@ function Shell() {
             <div className="flex gap-2">
               <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="input w-28">{Array.from({ length: 12 }, (_, i) => <option value={i + 1} key={i}>{new Date(2026, i).toLocaleString('en-IN', { month: 'short' })}</option>)}</select>
               <input value={year} onChange={(e) => setYear(Number(e.target.value))} type="number" className="input w-24" />
+              {isSupabaseMode && <button className="icon-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>}
             </div>
           </div>
         </header>
@@ -84,6 +85,53 @@ function Shell() {
       </div>
     </div>
   );
+}
+
+function AuthGate() {
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(isSupabaseMode);
+  useEffect(() => {
+    if (!isSupabaseMode) return;
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_, nextSession) => setSession(nextSession));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+  if (!isSupabaseMode) return <Shell />;
+  if (loading) return <div className="grid min-h-screen place-items-center bg-paper text-ink">Loading FinTrack Pro...</div>;
+  if (!session) return <LoginScreen />;
+  return <Shell />;
+}
+
+function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
+  async function submit(mode) {
+    setMessage('');
+    const { error } = mode === 'signup'
+      ? await supabase.auth.signUp({ email, password })
+      : await supabase.auth.signInWithPassword({ email, password });
+    if (error) setMessage(error.message);
+    else setMessage(mode === 'signup' ? 'Account created. If email confirmation is enabled, check your inbox.' : 'Signing in...');
+  }
+  return <div className="grid min-h-screen place-items-center bg-[#111] px-4">
+    <section className="w-full max-w-md rounded-[2rem] bg-white p-6 shadow-phone">
+      <div className="mb-6 flex items-center gap-3">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-coral text-white"><IndianRupee size={24} /></div>
+        <div><h1 className="text-2xl font-bold">FinTrack Pro</h1><p className="text-sm text-coral">secure online finance tracker</p></div>
+      </div>
+      <div className="space-y-3">
+        <input className="input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className="input" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        {message && <p className="rounded-2xl bg-blush px-4 py-3 text-sm text-coral">{message}</p>}
+        <button className="btn w-full" onClick={() => submit('signin')}>Sign In</button>
+        <button className="icon-btn w-full" onClick={() => submit('signup')}>Create Account</button>
+      </div>
+    </section>
+  </div>;
 }
 
 function Dashboard({ month, year }) {
@@ -417,4 +465,4 @@ function summary(row) {
   return parts.join(' - ') || row.type || '';
 }
 
-createRoot(document.getElementById('root')).render(<Shell />);
+createRoot(document.getElementById('root')).render(<AuthGate />);

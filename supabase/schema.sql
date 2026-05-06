@@ -7,16 +7,18 @@ create table if not exists users (
 
 create table if not exists salaries (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   month integer not null check (month between 1 and 12),
   year integer not null,
   amount numeric not null check (amount >= 0),
   notes text,
   created_at timestamptz default now(),
-  unique (month, year)
+  unique (user_id, month, year)
 );
 
 create table if not exists accounts (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   name text not null,
   type text not null,
   opening_balance numeric not null default 0,
@@ -26,6 +28,7 @@ create table if not exists accounts (
 
 create table if not exists payment_apps (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   name text not null,
   type text default 'Other',
   notes text,
@@ -34,6 +37,7 @@ create table if not exists payment_apps (
 
 create table if not exists expenses (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   date date not null,
   amount numeric not null check (amount >= 0),
   category text not null,
@@ -46,6 +50,7 @@ create table if not exists expenses (
 
 create table if not exists loans (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   loan_name text not null,
   loan_type text not null,
   total_amount numeric not null check (total_amount >= 0),
@@ -62,6 +67,7 @@ create table if not exists loans (
 
 create table if not exists emi_payments (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   loan_id bigint not null references loans(id) on delete cascade,
   payment_date date not null,
   amount numeric not null check (amount >= 0),
@@ -72,6 +78,7 @@ create table if not exists emi_payments (
 
 create table if not exists investments (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   name text not null,
   type text not null,
   amount numeric not null check (amount >= 0),
@@ -83,6 +90,7 @@ create table if not exists investments (
 
 create table if not exists reminders (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   title text not null,
   amount numeric default 0,
   due_date date not null,
@@ -94,6 +102,7 @@ create table if not exists reminders (
 
 create table if not exists transfers (
   id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
   from_account_id bigint references accounts(id) on delete set null,
   to_account_id bigint references accounts(id) on delete set null,
   amount numeric not null check (amount >= 0),
@@ -148,3 +157,23 @@ values (1, 2, 5000, '2026-05-02', 'ATM withdrawal');
 select setval(pg_get_serial_sequence('accounts', 'id'), coalesce((select max(id) from accounts), 1), true);
 select setval(pg_get_serial_sequence('payment_apps', 'id'), coalesce((select max(id) from payment_apps), 1), true);
 select setval(pg_get_serial_sequence('loans', 'id'), coalesce((select max(id) from loans), 1), true);
+
+alter table salaries enable row level security;
+alter table accounts enable row level security;
+alter table payment_apps enable row level security;
+alter table expenses enable row level security;
+alter table loans enable row level security;
+alter table emi_payments enable row level security;
+alter table investments enable row level security;
+alter table reminders enable row level security;
+alter table transfers enable row level security;
+
+create policy "Users manage own salaries" on salaries for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own accounts" on accounts for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own payment apps" on payment_apps for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own expenses" on expenses for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own loans" on loans for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own emi payments" on emi_payments for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own investments" on investments for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own reminders" on reminders for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own transfers" on transfers for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

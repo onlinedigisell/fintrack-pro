@@ -5,7 +5,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const isSupabaseMode = Boolean(supabaseUrl && supabaseKey);
-const supabase = isSupabaseMode ? createClient(supabaseUrl, supabaseKey) : null;
+export const supabase = isSupabaseMode ? createClient(supabaseUrl, supabaseKey) : null;
 
 const tableColumns = {
   salaries: ['month', 'year', 'amount', 'notes'],
@@ -55,7 +55,9 @@ async function restApi(path, options = {}) {
 }
 
 async function listRows(table, query = {}) {
+  const userId = await currentUserId();
   let request = supabase.from(table).select('*').order('id', { ascending: false });
+  if (userId) request = request.eq('user_id', userId);
   const monthDate = table === 'emi_payments' ? 'payment_date' : 'date';
   if (query.month && query.year && ['expenses', 'investments', 'emi_payments'].includes(table)) {
     request = request.gte(monthDate, startOfMonth(query.month, query.year)).lte(monthDate, endOfMonth(query.month, query.year));
@@ -68,7 +70,7 @@ async function listRows(table, query = {}) {
 }
 
 async function insertRow(table, row) {
-  const clean = cleanRow(table, row);
+  const clean = { ...cleanRow(table, row), user_id: await currentUserId() };
   const rows = await run(supabase.from(table).insert(clean).select('*').single());
   return rows;
 }
@@ -115,7 +117,10 @@ async function hydrateRows(table, rows) {
 }
 
 async function getAll(table) {
-  return run(supabase.from(table).select('*').order('id', { ascending: false }));
+  const userId = await currentUserId();
+  let request = supabase.from(table).select('*').order('id', { ascending: false });
+  if (userId) request = request.eq('user_id', userId);
+  return run(request);
 }
 
 async function accountBalances() {
@@ -230,7 +235,8 @@ export async function importCsv(table, file) {
     });
     return cleanRow(table, row);
   }).filter((row) => Object.keys(row).length);
-  if (rows.length) await run(supabase.from(table).insert(rows));
+  const userId = await currentUserId();
+  if (rows.length) await run(supabase.from(table).insert(rows.map((row) => ({ ...row, user_id: userId }))));
   return { imported: rows.length };
 }
 
@@ -303,4 +309,11 @@ function startOfToday() {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
   return date;
+}
+
+async function currentUserId() {
+  if (!isSupabaseMode) return null;
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw new Error(error.message);
+  return data.user?.id || null;
 }

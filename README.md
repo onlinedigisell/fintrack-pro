@@ -118,6 +118,31 @@ This is the recommended free path when you do not want to add a card for Render.
 
 This creates all FinTrack Pro tables and sample data.
 
+If you already ran the old schema before authentication was added, also run:
+
+```text
+supabase/auth-security.sql
+```
+
+That adds `user_id` columns and Row Level Security policies.
+
+### 1A. Supabase Auth Settings
+
+Open:
+
+```text
+Authentication -> Providers -> Email
+```
+
+For easiest first setup, use:
+
+```text
+Enable Email provider: ON
+Confirm email: OFF
+```
+
+If you keep email confirmation ON, new users must confirm their email before signing in.
+
 ### 2. Get Supabase Keys
 
 In Supabase, open:
@@ -162,6 +187,8 @@ dist
 6. Deploy.
 
 When the two `VITE_SUPABASE_*` variables are present, the frontend uses Supabase directly. Without those variables, local development still uses the Express + SQLite backend.
+
+Online Supabase mode includes a login screen. Each signed-in user's finance records are isolated by Supabase Row Level Security.
 
 ### Local Supabase Mode
 
