@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: fintrack-pro
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: fintrack-pro-data
+      mountPath: /var/data
+      sizeGB: 1
