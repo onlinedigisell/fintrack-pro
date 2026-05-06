@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, PiggyBank, Plus, RefreshCcw, Search, Settings, Smartphone, Trash2, WalletCards } from 'lucide-react';
+import { api, exportCsv, importCsv, isSupabaseMode } from './api';
 import './styles.css';
 
-const API = '/api';
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0));
 const dateIn = (value) => value ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value)) : '-';
 const today = new Date();
@@ -15,15 +15,6 @@ const investmentTypes = ['SIP', 'Mutual Fund', 'FD', 'Gold', 'Stocks', 'Insuranc
 const accountTypes = ['Bank account', 'Cash', 'UPI wallet', 'Credit card'];
 const appTypes = ['Google Pay', 'PhonePe', 'Paytm', 'Credit Card App', 'Bank App', 'Other'];
 const colors = ['#0f9f86', '#e35d43', '#d89b16', '#2563eb', '#7c3aed', '#0891b2'];
-
-async function api(path, options = {}) {
-  const res = await fetch(`${API}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options
-  });
-  if (!res.ok) throw new Error((await res.json()).error || 'Request failed');
-  return res.json();
-}
 
 function useData(path, deps = []) {
   const [data, setData] = useState([]);
@@ -69,6 +60,7 @@ function Shell() {
             <div>
               <p className="text-sm font-semibold text-coral">Money Manager</p>
               <h2 className="text-2xl font-bold tracking-tight">{page}</h2>
+              {isSupabaseMode && <p className="mt-1 text-xs font-semibold text-mint">Online database connected</p>}
             </div>
             <div className="flex gap-2">
               <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="input w-28">{Array.from({ length: 12 }, (_, i) => <option value={i + 1} key={i}>{new Date(2026, i).toLocaleString('en-IN', { month: 'short' })}</option>)}</select>
@@ -268,14 +260,12 @@ function SettingsPage() {
   async function uploadCsv(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const form = new FormData();
-    form.append('file', file);
-    await fetch(`${API}/import/${importTable}`, { method: 'POST', body: form });
+    await importCsv(importTable, file);
     load();
   }
   return <div className="space-y-6">
     <Panel title="Search Transactions"><div className="flex gap-2"><div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-3 text-stone-400" size={18} /><input className="input pl-10" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search expenses, investments, reminders" /></div></div><List rows={data} render={(r) => <><b>{r.kind}: {r.title}</b><span>{money(r.amount)} on {dateIn(r.date)}</span></>} /></Panel>
-    <Panel title="Data Management"><div className="grid gap-3 md:grid-cols-3"><select className="input" value={importTable} onChange={(e) => setImportTable(e.target.value)}>{Object.keys({ expenses: 1, salaries: 1, accounts: 1, investments: 1, payment_apps: 1, reminders: 1, loans: 1, emi_payments: 1, transfers: 1 }).map((t) => <option key={t}>{t}</option>)}</select><input className="input" type="file" accept=".csv" onChange={uploadCsv} /><a className="btn text-center" href={`${API}/export/${importTable}`}><Download className="inline" size={16} /> Export CSV</a></div></Panel>
+    <Panel title="Data Management"><div className="grid gap-3 md:grid-cols-3"><select className="input" value={importTable} onChange={(e) => setImportTable(e.target.value)}>{Object.keys({ expenses: 1, salaries: 1, accounts: 1, investments: 1, payment_apps: 1, reminders: 1, loans: 1, emi_payments: 1, transfers: 1 }).map((t) => <option key={t}>{t}</option>)}</select><input className="input" type="file" accept=".csv" onChange={uploadCsv} /><button className="btn text-center" type="button" onClick={() => exportCsv(importTable)}><Download className="inline" size={16} /> Export CSV</button></div></Panel>
   </div>;
 }
 

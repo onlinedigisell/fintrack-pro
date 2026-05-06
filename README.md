@@ -104,6 +104,79 @@ The included `render.yaml` already contains these settings for Render Blueprint 
 
 Important: GitHub Pages is not enough for this app because FinTrack Pro has an Express API and SQLite database. Use Render, Railway, Fly.io, or another Node backend host.
 
+## Free Hosting With Vercel + Supabase
+
+This is the recommended free path when you do not want to add a card for Render.
+
+### 1. Create Supabase Project
+
+1. Go to [Supabase](https://supabase.com).
+2. Create a free project.
+3. Open **SQL Editor**.
+4. Copy everything from `supabase/schema.sql`.
+5. Run it once.
+
+This creates all FinTrack Pro tables and sample data.
+
+### 2. Get Supabase Keys
+
+In Supabase, open:
+
+```text
+Project Settings -> API
+```
+
+Copy:
+
+```text
+Project URL
+anon public key
+```
+
+### 3. Add Vercel Environment Variables
+
+In Vercel project settings, add:
+
+```text
+VITE_SUPABASE_URL=your Supabase Project URL
+VITE_SUPABASE_ANON_KEY=your Supabase anon public key
+```
+
+### 4. Deploy on Vercel
+
+1. Go to [Vercel](https://vercel.com).
+2. Import the GitHub repository.
+3. Framework should be Vite.
+4. Build command:
+
+```bash
+npm run build
+```
+
+5. Output directory:
+
+```text
+dist
+```
+
+6. Deploy.
+
+When the two `VITE_SUPABASE_*` variables are present, the frontend uses Supabase directly. Without those variables, local development still uses the Express + SQLite backend.
+
+### Local Supabase Mode
+
+Create `.env` from `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+Fill in the values, then run:
+
+```bash
+npm run client
+```
+
 ## Included Features
 
 - Dashboard with monthly salary, expenses, EMI paid, remaining balance, total investments, account balances, upcoming reminders, and recent transactions
