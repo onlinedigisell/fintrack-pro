@@ -15,6 +15,10 @@ FinTrack Pro is a full-stack personal finance tracker for salary, expenses, EMIs
 ```text
 fintrack-pro/
   client/
+    public/
+      icon.svg
+      manifest.webmanifest
+      sw.js
     src/
       main.jsx
       styles.css
@@ -62,6 +66,17 @@ For mobile browser testing on the same Wi-Fi network, run `npm run dev`, find yo
 ```text
 http://YOUR_LOCAL_IP:5173
 ```
+
+## Mobile App Install
+
+FinTrack Pro is installable as a PWA from supported mobile browsers.
+
+1. Open the live app in Chrome or Edge on your phone.
+2. Sign in.
+3. Open **Settings** in FinTrack Pro.
+4. Tap **Install App** if shown, or use the browser menu and choose **Install app** / **Add to Home screen**.
+
+After install, it opens full-screen like a mobile app and keeps the same Supabase login/database.
 
 ## Production Build
 

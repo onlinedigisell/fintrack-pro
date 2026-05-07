@@ -34,19 +34,38 @@ function useData(path, deps = []) {
 }
 
 function Shell({ profile }) {
-  const [page, setPage] = useState('Dashboard');
+  const initialPage = new URLSearchParams(window.location.search).get('page') || 'Dashboard';
+  const [page, setPage] = useState(initialPage);
   const [month, setMonth] = useState(defaultMonth);
   const [year, setYear] = useState(defaultYear);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [standalone, setStandalone] = useState(false);
   const nav = [
     ['Dashboard', Home], ['Salary', IndianRupee], ['Expenses', CreditCard], ['EMI / Loans', Landmark],
     ['Accounts', WalletCards], ['Investments', PiggyBank], ['Payment Apps', Smartphone], ['Reminders', Bell],
     ['Reports', LineChart], ['Settings', Settings]
   ];
   if (profile?.role === 'admin') nav.push(['Users', ShieldCheck]);
+  useEffect(() => {
+    const standaloneMode = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone;
+    setStandalone(Boolean(standaloneMode));
+    const onInstall = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    window.addEventListener('beforeinstallprompt', onInstall);
+    return () => window.removeEventListener('beforeinstallprompt', onInstall);
+  }, []);
+  async function installApp() {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+  }
   return (
-    <div className="min-h-screen bg-[#111] text-ink">
-      <div className="mx-auto min-h-screen max-w-[1500px] bg-paper md:rounded-none">
-      <aside className="fixed bottom-0 left-0 right-0 z-30 border-t border-stone-200 bg-white/95 shadow-[0_-16px_35px_rgba(0,0,0,0.08)] backdrop-blur md:top-6 md:bottom-6 md:left-6 md:right-auto md:h-auto md:w-72 md:rounded-[2rem] md:border md:border-stone-100 md:shadow-phone">
+    <div className="min-h-dvh bg-[#111] text-ink">
+      <div className="mx-auto min-h-dvh max-w-[1500px] bg-paper md:rounded-none">
+      <aside className="fixed bottom-0 left-0 right-0 z-30 border-t border-stone-200 bg-white/95 pb-safe shadow-[0_-16px_35px_rgba(0,0,0,0.08)] backdrop-blur md:top-6 md:bottom-6 md:left-6 md:right-auto md:h-auto md:w-72 md:rounded-[2rem] md:border md:border-stone-100 md:pb-0 md:shadow-phone">
         <div className="hidden px-6 py-6 md:block">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-coral text-white shadow-soft"><IndianRupee size={22} /></div>
@@ -61,22 +80,23 @@ function Shell({ profile }) {
           ))}
         </nav>
       </aside>
-      <main className="pb-24 md:ml-80 md:pb-0">
-        <header className="sticky top-0 z-20 border-b border-white/70 bg-paper/90 px-4 py-4 backdrop-blur md:px-8">
+      <main className="pb-28 md:ml-80 md:pb-0">
+        <header className="sticky top-0 z-20 border-b border-white/70 bg-paper/90 px-4 pb-4 pt-safe backdrop-blur md:px-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-coral">Money Manager</p>
               <h2 className="text-2xl font-bold tracking-tight">{page}</h2>
-              {isSupabaseMode && <p className="mt-1 text-xs font-semibold text-mint">Online database connected {profile?.role === 'admin' ? '- Admin' : ''}</p>}
+              {isSupabaseMode && <p className="mt-1 text-xs font-semibold text-mint">{standalone ? 'Mobile app mode' : 'Online database connected'} {profile?.role === 'admin' ? '- Admin' : ''}</p>}
             </div>
             <div className="flex gap-2">
               <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="input w-28">{Array.from({ length: 12 }, (_, i) => <option value={i + 1} key={i}>{new Date(2026, i).toLocaleString('en-IN', { month: 'short' })}</option>)}</select>
               <input value={year} onChange={(e) => setYear(Number(e.target.value))} type="number" className="input w-24" />
+              {installPrompt && <button className="icon-btn hidden sm:inline-flex" onClick={installApp}><Download size={16} /> Install</button>}
               {isSupabaseMode && <button className="icon-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>}
             </div>
           </div>
         </header>
-        <section className="px-4 py-6 md:px-8">
+        <section className="px-3 py-4 sm:px-4 md:px-8 md:py-6">
           {page === 'Dashboard' && <Dashboard month={month} year={year} />}
           {page === 'Salary' && <Salary month={month} year={year} />}
           {page === 'Expenses' && <Expenses month={month} year={year} />}
@@ -86,7 +106,7 @@ function Shell({ profile }) {
           {page === 'Payment Apps' && <PaymentApps month={month} year={year} />}
           {page === 'Reminders' && <Reminders />}
           {page === 'Reports' && <Reports month={month} year={year} />}
-          {page === 'Settings' && <SettingsPage />}
+          {page === 'Settings' && <SettingsPage installPrompt={installPrompt} installApp={installApp} standalone={standalone} />}
           {page === 'Users' && profile?.role === 'admin' && <UsersAdmin />}
         </section>
       </main>
@@ -371,7 +391,7 @@ function Reports({ month, year }) {
   </div>;
 }
 
-function SettingsPage() {
+function SettingsPage({ installPrompt, installApp, standalone }) {
   const [q, setQ] = useState('');
   const { data, load } = useData(`/search?q=${encodeURIComponent(q)}`, [q]);
   const [importTable, setImportTable] = useState('expenses');
@@ -382,6 +402,17 @@ function SettingsPage() {
     load();
   }
   return <div className="space-y-6">
+    <Panel title="Mobile App">
+      <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+        <div>
+          <p className="font-semibold">{standalone ? 'FinTrack Pro is running like a mobile app.' : 'Install FinTrack Pro on your phone home screen.'}</p>
+          <p className="mt-1 text-sm text-stone-500">Chrome or Edge: open this site, tap menu, then choose Install app or Add to Home screen.</p>
+        </div>
+        {installPrompt
+          ? <button className="btn" type="button" onClick={installApp}><Download size={16} /> Install App</button>
+          : <span className="rounded-2xl bg-blush px-4 py-3 text-sm font-semibold text-coral">{standalone ? 'Installed' : 'Browser menu'}</span>}
+      </div>
+    </Panel>
     <Panel title="Search Transactions"><div className="flex gap-2"><div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-3 text-stone-400" size={18} /><input className="input pl-10" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search expenses, investments, reminders" /></div></div><List rows={data} render={(r) => <><b>{r.kind}: {r.title}</b><span>{money(r.amount)} on {dateIn(r.date)}</span></>} /></Panel>
     <Panel title="Data Management"><div className="grid gap-3 md:grid-cols-3"><select className="input" value={importTable} onChange={(e) => setImportTable(e.target.value)}>{Object.keys({ expenses: 1, salaries: 1, accounts: 1, investments: 1, payment_apps: 1, reminders: 1, loans: 1, emi_payments: 1, transfers: 1 }).map((t) => <option key={t}>{t}</option>)}</select><input className="input" type="file" accept=".csv" onChange={uploadCsv} /><button className="btn text-center" type="button" onClick={() => exportCsv(importTable)}><Download className="inline" size={16} /> Export CSV</button></div></Panel>
   </div>;
@@ -571,3 +602,9 @@ function summary(row) {
 }
 
 createRoot(document.getElementById('root')).render(<ErrorBoundary><AuthGate /></ErrorBoundary>);
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

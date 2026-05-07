@@ -3,10 +3,21 @@
 @tailwind utilities;
 
 * { box-sizing: border-box; }
+html {
+  min-height: 100%;
+  background: #111111;
+}
+html,
+body,
+#root {
+  min-height: 100%;
+}
 body {
   margin: 0;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #111111;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @layer components {
@@ -20,7 +31,7 @@ body {
     @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm transition hover:border-coral hover:text-coral;
   }
   .nav-btn {
-    @apply mx-1 flex min-w-16 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-2 text-[11px] font-semibold md:mx-0 md:mb-1 md:min-w-0 md:flex-row md:justify-start md:gap-3 md:text-sm;
+    @apply mx-1 flex min-w-16 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-2 text-[11px] font-semibold active:scale-[0.98] md:mx-0 md:mb-1 md:min-w-0 md:flex-row md:justify-start md:gap-3 md:text-sm;
   }
   .phone-frame {
     @apply relative overflow-hidden rounded-[2.1rem] border-[10px] border-white bg-white;
@@ -34,5 +45,23 @@ body {
   }
   .transaction-row {
     @apply rounded-2xl border border-stone-100 bg-white px-4 py-3 shadow-sm;
+  }
+  .pt-safe {
+    padding-top: calc(1rem + env(safe-area-inset-top));
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (display-mode: standalone) {
+  body {
+    user-select: none;
+  }
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    user-select: text;
   }
 }
