@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, PiggyBank, Plus, RefreshCcw, Search, Settings, Smartphone, Trash2, WalletCards } from 'lucide-react';
-import { api, exportCsv, importCsv, isSupabaseMode, supabase } from './api';
+import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, PiggyBank, Plus, RefreshCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, WalletCards } from 'lucide-react';
+import { api, exportCsv, getMyProfile, importCsv, isSupabaseMode, listProfiles, supabase, updateProfile } from './api';
 import './styles.css';
 
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -27,7 +27,7 @@ function useData(path, deps = []) {
   return { data, loading, load };
 }
 
-function Shell() {
+function Shell({ profile }) {
   const [page, setPage] = useState('Dashboard');
   const [month, setMonth] = useState(defaultMonth);
   const [year, setYear] = useState(defaultYear);
@@ -36,6 +36,7 @@ function Shell() {
     ['Accounts', WalletCards], ['Investments', PiggyBank], ['Payment Apps', Smartphone], ['Reminders', Bell],
     ['Reports', LineChart], ['Settings', Settings]
   ];
+  if (profile?.role === 'admin') nav.push(['Users', ShieldCheck]);
   return (
     <div className="min-h-screen bg-[#111] text-ink">
       <div className="mx-auto min-h-screen max-w-[1500px] bg-paper md:rounded-none">
@@ -60,7 +61,7 @@ function Shell() {
             <div>
               <p className="text-sm font-semibold text-coral">Money Manager</p>
               <h2 className="text-2xl font-bold tracking-tight">{page}</h2>
-              {isSupabaseMode && <p className="mt-1 text-xs font-semibold text-mint">Online database connected</p>}
+              {isSupabaseMode && <p className="mt-1 text-xs font-semibold text-mint">Online database connected {profile?.role === 'admin' ? '- Admin' : ''}</p>}
             </div>
             <div className="flex gap-2">
               <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="input w-28">{Array.from({ length: 12 }, (_, i) => <option value={i + 1} key={i}>{new Date(2026, i).toLocaleString('en-IN', { month: 'short' })}</option>)}</select>
@@ -80,6 +81,7 @@ function Shell() {
           {page === 'Reminders' && <Reminders />}
           {page === 'Reports' && <Reports month={month} year={year} />}
           {page === 'Settings' && <SettingsPage />}
+          {page === 'Users' && profile?.role === 'admin' && <UsersAdmin />}
         </section>
       </main>
       </div>
@@ -89,20 +91,45 @@ function Shell() {
 
 function AuthGate() {
   const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(isSupabaseMode);
+  async function loadProfile(nextSession) {
+    setSession(nextSession);
+    if (!nextSession) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+    try {
+      setProfile(await getMyProfile());
+    } finally {
+      setLoading(false);
+    }
+  }
   useEffect(() => {
     if (!isSupabaseMode) return;
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_, nextSession) => setSession(nextSession));
+    supabase.auth.getSession().then(({ data }) => loadProfile(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_, nextSession) => loadProfile(nextSession));
     return () => listener.subscription.unsubscribe();
   }, []);
   if (!isSupabaseMode) return <Shell />;
   if (loading) return <div className="grid min-h-screen place-items-center bg-paper text-ink">Loading FinTrack Pro...</div>;
   if (!session) return <LoginScreen />;
-  return <Shell />;
+  if (profile?.status === 'pending') return <AccessMessage title="Waiting for admin approval" message="Your account is created, but the admin must approve it before you can use FinTrack Pro." />;
+  if (profile?.status === 'blocked') return <AccessMessage title="Access blocked" message="Your account access is blocked. Contact the FinTrack Pro admin." />;
+  if (profile?.status !== 'approved') return <AccessMessage title="Access not active" message="Your account is not approved yet." />;
+  return <Shell profile={profile} />;
+}
+
+function AccessMessage({ title, message }) {
+  return <div className="grid min-h-screen place-items-center bg-[#111] px-4">
+    <section className="w-full max-w-md rounded-[2rem] bg-white p-6 text-center shadow-phone">
+      <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-coral text-white"><ShieldCheck size={26} /></div>
+      <h1 className="text-2xl font-bold">{title}</h1>
+      <p className="mt-2 text-sm text-stone-600">{message}</p>
+      <button className="btn mt-5 w-full" onClick={() => supabase.auth.signOut()}>Sign out</button>
+    </section>
+  </div>;
 }
 
 function LoginScreen() {
@@ -315,6 +342,41 @@ function SettingsPage() {
     <Panel title="Search Transactions"><div className="flex gap-2"><div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-3 text-stone-400" size={18} /><input className="input pl-10" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search expenses, investments, reminders" /></div></div><List rows={data} render={(r) => <><b>{r.kind}: {r.title}</b><span>{money(r.amount)} on {dateIn(r.date)}</span></>} /></Panel>
     <Panel title="Data Management"><div className="grid gap-3 md:grid-cols-3"><select className="input" value={importTable} onChange={(e) => setImportTable(e.target.value)}>{Object.keys({ expenses: 1, salaries: 1, accounts: 1, investments: 1, payment_apps: 1, reminders: 1, loans: 1, emi_payments: 1, transfers: 1 }).map((t) => <option key={t}>{t}</option>)}</select><input className="input" type="file" accept=".csv" onChange={uploadCsv} /><button className="btn text-center" type="button" onClick={() => exportCsv(importTable)}><Download className="inline" size={16} /> Export CSV</button></div></Panel>
   </div>;
+}
+
+function UsersAdmin() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  async function load() {
+    setLoading(true);
+    setUsers(await listProfiles());
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+  async function change(user, patch) {
+    await updateProfile(user.id, patch);
+    load();
+  }
+  return <Panel title="User Access Control">
+    <div className="space-y-3">
+      {loading && <p className="text-sm text-stone-500">Loading users...</p>}
+      {users.map((user) => <article className="transaction-row" key={user.id}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">{user.email || user.id}</h3>
+            <p className="text-sm text-stone-500">Role: {user.role} - Status: {user.status}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="icon-btn" onClick={() => change(user, { status: 'approved' })}>Approve</button>
+            <button className="icon-btn" onClick={() => change(user, { status: 'pending' })}>Pending</button>
+            <button className="icon-btn text-coral" onClick={() => change(user, { status: 'blocked' })}>Block</button>
+            <button className="icon-btn" onClick={() => change(user, { role: user.role === 'admin' ? 'user' : 'admin' })}>{user.role === 'admin' ? 'Make User' : 'Make Admin'}</button>
+          </div>
+        </div>
+      </article>)}
+      {!loading && !users.length && <p className="text-sm text-stone-500">No users found.</p>}
+    </div>
+  </Panel>;
 }
 
 function CrudPage({ title, table, rows, load, fields, initial, extra, renderExtraRow }) {

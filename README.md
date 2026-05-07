@@ -126,6 +126,14 @@ supabase/auth-security.sql
 
 That adds `user_id` columns and Row Level Security policies.
 
+For admin-controlled access, run this file too:
+
+```text
+supabase/admin-access.sql
+```
+
+The first user who signs up becomes `admin` automatically. Every later user is `pending` until the admin approves them in the app's **Users** page.
+
 ### 1A. Supabase Auth Settings
 
 Open:
@@ -189,6 +197,13 @@ dist
 When the two `VITE_SUPABASE_*` variables are present, the frontend uses Supabase directly. Without those variables, local development still uses the Express + SQLite backend.
 
 Online Supabase mode includes a login screen. Each signed-in user's finance records are isolated by Supabase Row Level Security.
+
+Admin access flow:
+
+- First signup: admin and approved automatically
+- Later signups: pending
+- Admin can approve, block, or promote users from **Users**
+- Pending or blocked users cannot access finance records
 
 ### Local Supabase Mode
 

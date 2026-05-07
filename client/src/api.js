@@ -45,6 +45,33 @@ export async function api(path, options = {}) {
   throw new Error('Unsupported request');
 }
 
+export async function getMyProfile() {
+  if (!isSupabaseMode) return null;
+  const userId = await currentUserId();
+  if (!userId) return null;
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data) return data;
+  const user = (await supabase.auth.getUser()).data.user;
+  const { data: created, error: createError } = await supabase
+    .from('profiles')
+    .insert({ id: userId, email: user?.email, role: 'user', status: 'pending' })
+    .select('*')
+    .single();
+  if (createError) throw new Error(createError.message);
+  return created;
+}
+
+export async function listProfiles() {
+  if (!isSupabaseMode) return [];
+  return run(supabase.from('profiles').select('*').order('created_at', { ascending: false }));
+}
+
+export async function updateProfile(id, patch) {
+  if (!isSupabaseMode) return null;
+  return run(supabase.from('profiles').update(patch).eq('id', id).select('*').single());
+}
+
 async function restApi(path, options = {}) {
   const res = await fetch(`${REST_API}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
