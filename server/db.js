@@ -15,6 +15,8 @@ export const tables = {
   salaries: ['month', 'year', 'amount', 'notes'],
   accounts: ['name', 'type', 'opening_balance', 'notes'],
   expenses: ['date', 'amount', 'category', 'notes', 'payment_method', 'payment_app_id', 'account_id'],
+  credit_cards: ['card_name', 'bank_name', 'network', 'last4', 'credit_limit', 'used_limit', 'billing_start_day', 'billing_end_day', 'due_day', 'minimum_due', 'total_due', 'linked_upi_apps', 'notes', 'active'],
+  credit_card_transactions: ['transaction_date', 'merchant', 'amount', 'category', 'payment_source', 'transaction_type', 'credit_card_id', 'payment_app_id', 'account_id', 'notes'],
   loans: ['loan_name', 'loan_type', 'total_amount', 'emi_amount', 'start_date', 'end_date', 'interest_rate', 'lender', 'account_id', 'due_day', 'notes'],
   emi_payments: ['loan_id', 'payment_date', 'amount', 'account_id', 'notes'],
   investments: ['name', 'type', 'amount', 'date', 'account_id', 'notes'],
@@ -63,6 +65,38 @@ CREATE TABLE IF NOT EXISTS expenses (
   payment_method TEXT NOT NULL,
   payment_app_id INTEGER REFERENCES payment_apps(id) ON DELETE SET NULL,
   account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS credit_cards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_name TEXT NOT NULL,
+  bank_name TEXT NOT NULL,
+  network TEXT DEFAULT 'RuPay',
+  last4 TEXT,
+  credit_limit REAL NOT NULL DEFAULT 0,
+  used_limit REAL NOT NULL DEFAULT 0,
+  billing_start_day INTEGER DEFAULT 1,
+  billing_end_day INTEGER DEFAULT 30,
+  due_day INTEGER DEFAULT 20,
+  minimum_due REAL DEFAULT 0,
+  total_due REAL DEFAULT 0,
+  linked_upi_apps TEXT,
+  notes TEXT,
+  active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS credit_card_transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  transaction_date TEXT NOT NULL,
+  merchant TEXT NOT NULL,
+  amount REAL NOT NULL CHECK(amount >= 0),
+  category TEXT DEFAULT 'Other',
+  payment_source TEXT NOT NULL,
+  transaction_type TEXT DEFAULT 'Purchase',
+  credit_card_id INTEGER REFERENCES credit_cards(id) ON DELETE SET NULL,
+  payment_app_id INTEGER REFERENCES payment_apps(id) ON DELETE SET NULL,
+  account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+  notes TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS loans (
@@ -176,7 +210,15 @@ export function list(table, query = {}) {
     where.push("strftime('%Y', payment_date) = @year");
     params.year = String(query.year);
   }
-  ['category', 'account_id', 'payment_app_id', 'loan_id', 'type'].forEach((key) => {
+  if (query.month && table === 'credit_card_transactions') {
+    where.push("strftime('%m', transaction_date) = @month");
+    params.month = String(query.month).padStart(2, '0');
+  }
+  if (query.year && table === 'credit_card_transactions') {
+    where.push("strftime('%Y', transaction_date) = @year");
+    params.year = String(query.year);
+  }
+  ['category', 'account_id', 'payment_app_id', 'loan_id', 'type', 'credit_card_id', 'payment_source'].forEach((key) => {
     if (query[key]) {
       where.push(`${key} = @${key}`);
       params[key] = query[key];
@@ -187,6 +229,7 @@ export function list(table, query = {}) {
     expenses: 'SELECT expenses.*, accounts.name AS account_name, payment_apps.name AS payment_app_name FROM expenses LEFT JOIN accounts ON accounts.id = expenses.account_id LEFT JOIN payment_apps ON payment_apps.id = expenses.payment_app_id',
     loans: 'SELECT loans.*, accounts.name AS account_name FROM loans LEFT JOIN accounts ON accounts.id = loans.account_id',
     emi_payments: 'SELECT emi_payments.*, loans.loan_name, accounts.name AS account_name FROM emi_payments LEFT JOIN loans ON loans.id = emi_payments.loan_id LEFT JOIN accounts ON accounts.id = emi_payments.account_id',
+    credit_card_transactions: 'SELECT credit_card_transactions.*, credit_cards.card_name AS credit_card_name, credit_cards.last4 AS credit_card_last4, payment_apps.name AS payment_app_name, accounts.name AS account_name FROM credit_card_transactions LEFT JOIN credit_cards ON credit_cards.id = credit_card_transactions.credit_card_id LEFT JOIN payment_apps ON payment_apps.id = credit_card_transactions.payment_app_id LEFT JOIN accounts ON accounts.id = credit_card_transactions.account_id',
     investments: 'SELECT investments.*, accounts.name AS account_name FROM investments LEFT JOIN accounts ON accounts.id = investments.account_id',
     transfers: 'SELECT transfers.*, fa.name AS from_account_name, ta.name AS to_account_name FROM transfers LEFT JOIN accounts fa ON fa.id = transfers.from_account_id LEFT JOIN accounts ta ON ta.id = transfers.to_account_id'
   };
@@ -200,7 +243,17 @@ export function create(table, body) {
   const values = columns.filter((column) => body[column] !== undefined);
   const sql = `INSERT INTO ${table} (${values.join(',')}) VALUES (${values.map((v) => `@${v}`).join(',')})`;
   const result = db.prepare(sql).run(body);
+  if (table === 'credit_card_transactions') applyCreditCardTransaction(body);
   return db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(result.lastInsertRowid);
+}
+
+function applyCreditCardTransaction(body) {
+  if (!body.credit_card_id || !['Direct Credit Card', 'UPI via RuPay Credit Card'].includes(body.payment_source)) return;
+  const card = db.prepare('SELECT * FROM credit_cards WHERE id = ?').get(body.credit_card_id);
+  if (!card) return;
+  const direction = body.transaction_type === 'Bill Payment' ? -1 : 1;
+  const used = Math.max(0, Number(card.used_limit || 0) + (Number(body.amount || 0) * direction));
+  db.prepare('UPDATE credit_cards SET used_limit = ?, total_due = ? WHERE id = ?').run(used, used, body.credit_card_id);
 }
 
 export function update(table, id, body) {
@@ -243,13 +296,16 @@ export function dashboard(month, year) {
   const loans = list('loans');
   const emiPayments = list('emi_payments');
   const emiReminders = upcomingEmiReminders(loans, emiPayments);
+  const creditCards = list('credit_cards');
+  const cardTransactions = list('credit_card_transactions', { month, year });
+  const creditCardSummary = summarizeCreditCards(creditCards, cardTransactions);
   const recent = db.prepare(`
     SELECT 'Expense' AS kind, date, amount, category AS title, notes FROM expenses
     UNION ALL SELECT 'Investment', date, amount, name, notes FROM investments
     UNION ALL SELECT 'EMI', payment_date, amount, loan_name, emi_payments.notes FROM emi_payments JOIN loans ON loans.id = emi_payments.loan_id
     ORDER BY date DESC LIMIT 10
   `).all();
-  return { salary, expenses, emiPaid, investments, remaining: salary - expenses - emiPaid - investments, accounts: accountBalances(), reminders, emiReminders, recent };
+  return { salary, expenses, emiPaid, investments, remaining: salary - expenses - emiPaid - investments, accounts: accountBalances(), reminders, emiReminders, creditCards, creditCardSummary, cardTransactions: cardTransactions.slice(0, 8), recent };
 }
 
 export function reports(month, year) {
@@ -260,6 +316,10 @@ export function reports(month, year) {
     byPaymentApp: db.prepare("SELECT COALESCE(payment_apps.name, 'Not set') AS name, SUM(expenses.amount) AS value FROM expenses LEFT JOIN payment_apps ON payment_apps.id = expenses.payment_app_id WHERE strftime('%m', date)=? AND strftime('%Y', date)=? GROUP BY payment_apps.name ORDER BY value DESC").all(monthText, y),
     byAccount: accountBalances().map((account) => ({ name: account.name, value: account.balance })),
     emi: db.prepare("SELECT loans.loan_name AS name, SUM(emi_payments.amount) AS value FROM emi_payments JOIN loans ON loans.id = emi_payments.loan_id WHERE strftime('%m', payment_date)=? AND strftime('%Y', payment_date)=? GROUP BY loans.loan_name ORDER BY value DESC").all(monthText, y),
+    byCreditCard: db.prepare("SELECT COALESCE(credit_cards.card_name, 'No card') AS name, SUM(credit_card_transactions.amount) AS value FROM credit_card_transactions LEFT JOIN credit_cards ON credit_cards.id = credit_card_transactions.credit_card_id WHERE strftime('%m', transaction_date)=? AND strftime('%Y', transaction_date)=? GROUP BY credit_cards.card_name ORDER BY value DESC").all(monthText, y),
+    byCardCategory: db.prepare("SELECT category AS name, SUM(amount) AS value FROM credit_card_transactions WHERE strftime('%m', transaction_date)=? AND strftime('%Y', transaction_date)=? GROUP BY category ORDER BY value DESC").all(monthText, y),
+    byPaymentSource: db.prepare("SELECT payment_source AS name, SUM(amount) AS value FROM credit_card_transactions WHERE strftime('%m', transaction_date)=? AND strftime('%Y', transaction_date)=? GROUP BY payment_source ORDER BY value DESC").all(monthText, y),
+    cardUtilization: list('credit_cards').map((card) => ({ name: card.card_name, value: utilization(card) })),
     salaryRemaining: dashboard(month, year)
   };
 }
@@ -318,6 +378,48 @@ function upcomingEmiReminders(loans, payments) {
     .filter(Boolean)
     .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
     .slice(0, 8);
+}
+
+function summarizeCreditCards(cards, transactions = []) {
+  const totalLimit = sumBy(cards, 'credit_limit');
+  const usedLimit = sumBy(cards, 'used_limit');
+  const currentMonthSpend = sumBy(transactions, 'amount', (row) => row.transaction_type !== 'Bill Payment');
+  const availableLimit = Math.max(0, totalLimit - usedLimit);
+  const activeCards = cards.filter((card) => Number(card.active ?? 1));
+  const highestUtilized = [...cards].sort((a, b) => utilization(b) - utilization(a))[0] || null;
+  const nextDue = activeCards
+    .map((card) => ({ ...card, next_due_date: nextDayDate(card.due_day) }))
+    .sort((a, b) => new Date(a.next_due_date) - new Date(b.next_due_date))[0] || null;
+  const warnings = activeCards
+    .filter((card) => utilization(card) >= 80 || daysUntil(nextDayDate(card.due_day)) <= 7)
+    .map((card) => ({
+      id: `card-${card.id}`,
+      title: card.card_name,
+      message: utilization(card) >= 80 ? `${card.card_name} is at ${utilization(card)}% utilization.` : `${card.card_name} bill is due soon.`,
+      severity: utilization(card) >= 80 ? 'danger' : 'warning'
+    }));
+  return { totalLimit, usedLimit, availableLimit, currentMonthSpend, highestUtilized, nextDue, warnings };
+}
+
+function sumBy(rows, key, filter = () => true) {
+  return rows.filter(filter).reduce((sum, row) => sum + Number(row[key] || 0), 0);
+}
+
+function utilization(card) {
+  return Number(card?.credit_limit || 0) > 0 ? Math.round((Number(card.used_limit || 0) / Number(card.credit_limit || 0)) * 100) : 0;
+}
+
+function nextDayDate(day) {
+  const current = new Date();
+  const due = dateForDay(current.getFullYear(), current.getMonth(), day || 1);
+  if (due < startOfToday()) return toIsoDate(dateForDay(current.getFullYear(), current.getMonth() + 1, day || 1));
+  return toIsoDate(due);
+}
+
+function daysUntil(value) {
+  const target = new Date(value);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target - startOfToday()) / 86400000);
 }
 
 function nextUnpaidEmiDate(loan, payments, today, until) {

@@ -27,6 +27,8 @@ const tableColumns = {
   salaries: ['month', 'year', 'amount', 'notes'],
   accounts: ['name', 'type', 'opening_balance', 'notes'],
   expenses: ['date', 'amount', 'category', 'notes', 'payment_method', 'payment_app_id', 'account_id'],
+  credit_cards: ['card_name', 'bank_name', 'network', 'last4', 'credit_limit', 'used_limit', 'billing_start_day', 'billing_end_day', 'due_day', 'minimum_due', 'total_due', 'linked_upi_apps', 'notes', 'active'],
+  credit_card_transactions: ['transaction_date', 'merchant', 'amount', 'category', 'payment_source', 'transaction_type', 'credit_card_id', 'payment_app_id', 'account_id', 'notes'],
   loans: ['loan_name', 'loan_type', 'total_amount', 'emi_amount', 'start_date', 'end_date', 'interest_rate', 'lender', 'account_id', 'due_day', 'notes'],
   emi_payments: ['loan_id', 'payment_date', 'amount', 'account_id', 'notes'],
   investments: ['name', 'type', 'amount', 'date', 'account_id', 'notes'],
@@ -101,11 +103,11 @@ async function listRows(table, query = {}) {
   const userId = await currentUserId();
   let request = supabase.from(table).select('*').order('id', { ascending: false });
   if (userId) request = request.eq('user_id', userId);
-  const monthDate = table === 'emi_payments' ? 'payment_date' : 'date';
-  if (query.month && query.year && ['expenses', 'investments', 'emi_payments'].includes(table)) {
+  const monthDate = table === 'emi_payments' ? 'payment_date' : table === 'credit_card_transactions' ? 'transaction_date' : 'date';
+  if (query.month && query.year && ['expenses', 'investments', 'emi_payments', 'credit_card_transactions'].includes(table)) {
     request = request.gte(monthDate, startOfMonth(query.month, query.year)).lte(monthDate, endOfMonth(query.month, query.year));
   }
-  ['category', 'account_id', 'payment_app_id', 'loan_id', 'type'].forEach((key) => {
+  ['category', 'account_id', 'payment_app_id', 'loan_id', 'type', 'credit_card_id', 'payment_source'].forEach((key) => {
     if (query[key]) request = request.eq(key, query[key]);
   });
   const rows = await run(request);
@@ -115,6 +117,7 @@ async function listRows(table, query = {}) {
 async function insertRow(table, row) {
   const clean = { ...cleanRow(table, row), user_id: await currentUserId() };
   const rows = await run(supabase.from(table).insert(clean).select('*').single());
+  if (table === 'credit_card_transactions') await applyCreditCardTransaction(clean);
   return rows;
 }
 
@@ -143,16 +146,19 @@ function cleanRow(table, row) {
 }
 
 async function hydrateRows(table, rows) {
-  if (!['expenses', 'loans', 'emi_payments', 'investments', 'transfers'].includes(table)) return rows;
-  const [accounts, apps, loans] = await Promise.all([
+  if (!['expenses', 'loans', 'emi_payments', 'investments', 'transfers', 'credit_card_transactions'].includes(table)) return rows;
+  const [accounts, apps, loans, cards] = await Promise.all([
     getAll('accounts'),
     getAll('payment_apps'),
-    getAll('loans')
+    getAll('loans'),
+    safeGetAll('credit_cards')
   ]);
   return rows.map((row) => ({
     ...row,
     account_name: accounts.find((a) => a.id === row.account_id)?.name,
     payment_app_name: apps.find((a) => a.id === row.payment_app_id)?.name,
+    credit_card_name: cards.find((card) => card.id === row.credit_card_id)?.card_name,
+    credit_card_last4: cards.find((card) => card.id === row.credit_card_id)?.last4,
     loan_name: loans.find((loan) => loan.id === row.loan_id)?.loan_name,
     from_account_name: accounts.find((a) => a.id === row.from_account_id)?.name,
     to_account_name: accounts.find((a) => a.id === row.to_account_id)?.name
@@ -164,6 +170,27 @@ async function getAll(table) {
   let request = supabase.from(table).select('*').order('id', { ascending: false });
   if (userId) request = request.eq('user_id', userId);
   return run(request);
+}
+
+async function safeGetAll(table) {
+  try {
+    return await getAll(table);
+  } catch (error) {
+    const message = String(error.message || '');
+    if (message.includes('does not exist') || message.includes('schema cache')) return [];
+    throw error;
+  }
+}
+
+async function applyCreditCardTransaction(row) {
+  if (!row.credit_card_id || !['Direct Credit Card', 'UPI via RuPay Credit Card'].includes(row.payment_source)) return;
+  const cards = await safeGetAll('credit_cards');
+  const card = cards.find((item) => Number(item.id) === Number(row.credit_card_id));
+  if (!card) return;
+  const amount = Number(row.amount || 0);
+  const direction = row.transaction_type === 'Bill Payment' ? -1 : 1;
+  const used = Math.max(0, Number(card.used_limit || 0) + (amount * direction));
+  await run(supabase.from('credit_cards').update({ used_limit: used, total_due: used }).eq('id', row.credit_card_id));
 }
 
 async function accountBalances() {
@@ -188,14 +215,16 @@ async function accountBalances() {
 }
 
 async function dashboard(month, year) {
-  const [salaries, expenses, emiPayments, investments, reminders, accounts, loans] = await Promise.all([
+  const [salaries, expenses, emiPayments, investments, reminders, accounts, loans, creditCards, cardTransactions] = await Promise.all([
     getAll('salaries'),
     getAll('expenses'),
     getAll('emi_payments'),
     getAll('investments'),
     getAll('reminders'),
     accountBalances(),
-    getAll('loans')
+    getAll('loans'),
+    safeGetAll('credit_cards'),
+    safeGetAll('credit_card_transactions')
   ]);
   const inMonth = (row, key) => sameMonth(row[key], month, year);
   const salary = sumBy(salaries, 'amount', (row) => Number(row.month) === month && Number(row.year) === year);
@@ -207,29 +236,38 @@ async function dashboard(month, year) {
     .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
     .slice(0, 6);
   const emiReminders = upcomingEmiReminders(loans, emiPayments, accounts);
+  const currentCardTransactions = cardTransactions.filter((row) => sameMonth(row.transaction_date, month, year));
+  const creditCardSummary = summarizeCreditCards(creditCards, currentCardTransactions);
   const recent = [
     ...expenses.map((row) => ({ kind: 'Expense', date: row.date, amount: row.amount, title: row.category, notes: row.notes })),
     ...investments.map((row) => ({ kind: 'Investment', date: row.date, amount: row.amount, title: row.name, notes: row.notes })),
     ...emiPayments.map((row) => ({ kind: 'EMI', date: row.payment_date, amount: row.amount, title: loans.find((loan) => loan.id === row.loan_id)?.loan_name || 'EMI', notes: row.notes }))
   ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
-  return { salary, expenses: expenseTotal, emiPaid, investments: investmentTotal, remaining: salary - expenseTotal - emiPaid - investmentTotal, accounts, reminders: upcoming, emiReminders, recent };
+  return { salary, expenses: expenseTotal, emiPaid, investments: investmentTotal, remaining: salary - expenseTotal - emiPaid - investmentTotal, accounts, reminders: upcoming, emiReminders, creditCards, creditCardSummary, cardTransactions: currentCardTransactions.slice(0, 8), recent };
 }
 
 async function reports(month, year) {
-  const [expenses, payments, loans, apps, dash] = await Promise.all([
+  const [expenses, payments, loans, apps, cards, cardTransactions, dash] = await Promise.all([
     getAll('expenses'),
     getAll('emi_payments'),
     getAll('loans'),
     getAll('payment_apps'),
+    safeGetAll('credit_cards'),
+    safeGetAll('credit_card_transactions'),
     dashboard(month, year)
   ]);
   const expenseRows = expenses.filter((row) => sameMonth(row.date, month, year));
   const paymentRows = payments.filter((row) => sameMonth(row.payment_date, month, year));
+  const cardRows = cardTransactions.filter((row) => sameMonth(row.transaction_date, month, year));
   return {
     byCategory: groupSum(expenseRows, (row) => row.category || 'Other'),
     byPaymentApp: groupSum(expenseRows, (row) => apps.find((app) => app.id === row.payment_app_id)?.name || 'Not set'),
     byAccount: dash.accounts.map((account) => ({ name: account.name, value: account.balance })),
     emi: groupSum(paymentRows, (row) => loans.find((loan) => loan.id === row.loan_id)?.loan_name || 'EMI'),
+    byCreditCard: groupSum(cardRows, (row) => cards.find((card) => card.id === row.credit_card_id)?.card_name || 'No card'),
+    byCardCategory: groupSum(cardRows, (row) => row.category || 'Other'),
+    byPaymentSource: groupSum([...expenseRows, ...cardRows], (row) => row.payment_source || row.payment_method || 'Other'),
+    cardUtilization: cards.map((card) => ({ name: card.card_name, value: utilization(card) })),
     salaryRemaining: dash
   };
 }
@@ -333,6 +371,48 @@ function groupSum(rows, getName) {
 
 function sumBy(rows, key, filter = () => true) {
   return rows.filter(filter).reduce((sum, row) => sum + Number(row[key] || 0), 0);
+}
+
+function summarizeCreditCards(cards, transactions = []) {
+  const totalLimit = sumBy(cards, 'credit_limit');
+  const usedLimit = sumBy(cards, 'used_limit');
+  const currentMonthSpend = sumBy(transactions, 'amount', (row) => row.transaction_type !== 'Bill Payment');
+  const availableLimit = Math.max(0, totalLimit - usedLimit);
+  const activeCards = cards.filter((card) => Number(card.active ?? 1));
+  const highestUtilized = [...cards].sort((a, b) => utilization(b) - utilization(a))[0] || null;
+  const nextDue = activeCards
+    .map((card) => ({ ...card, next_due_date: nextDayDate(card.due_day) }))
+    .sort((a, b) => new Date(a.next_due_date) - new Date(b.next_due_date))[0] || null;
+  const warnings = activeCards
+    .filter((card) => utilization(card) >= 80 || daysUntil(nextDayDate(card.due_day)) <= 7)
+    .map((card) => ({
+      id: `card-${card.id}`,
+      title: card.card_name,
+      message: utilization(card) >= 80 ? `${card.card_name} is at ${utilization(card)}% utilization.` : `${card.card_name} bill is due on ${dateLabel(nextDayDate(card.due_day))}.`,
+      severity: utilization(card) >= 80 ? 'danger' : 'warning'
+    }));
+  return { totalLimit, usedLimit, availableLimit, currentMonthSpend, highestUtilized, nextDue, warnings };
+}
+
+function utilization(card) {
+  return Number(card?.credit_limit || 0) > 0 ? Math.round((Number(card.used_limit || 0) / Number(card.credit_limit || 0)) * 100) : 0;
+}
+
+function nextDayDate(day) {
+  const current = new Date();
+  const due = dateForDay(current.getFullYear(), current.getMonth(), day || 1);
+  if (due < startOfToday()) return toIsoDate(dateForDay(current.getFullYear(), current.getMonth() + 1, day || 1));
+  return toIsoDate(due);
+}
+
+function dateLabel(value) {
+  return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short' }).format(new Date(value));
+}
+
+function daysUntil(value) {
+  const target = new Date(value);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target - startOfToday()) / 86400000);
 }
 
 function sameMonth(value, month, year) {

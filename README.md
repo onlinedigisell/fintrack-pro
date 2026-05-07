@@ -139,6 +139,12 @@ Use this single setup file for new Supabase projects:
 supabase/complete-setup.sql
 ```
 
+If your project already existed before the Credit Cards module was added, run this one-time migration too:
+
+```text
+supabase/credit-cards.sql
+```
+
 If you already ran the old schema before authentication was added, also run:
 
 ```text

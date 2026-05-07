@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, Menu, PiggyBank, Plus, RefreshCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, WalletCards, X } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle2, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, Menu, PiggyBank, Plus, RefreshCcw, Search, Settings, ShieldCheck, Smartphone, Sparkles, Trash2, UserCircle, WalletCards, X } from 'lucide-react';
 import { api, exportCsv, getMyProfile, importCsv, isSupabaseMode, listProfiles, supabase, supabaseConfigError, updateProfile } from './api';
 import { ErrorBoundary } from './ErrorBoundary';
 import './styles.css';
@@ -15,6 +15,8 @@ const categories = ['Food', 'Travel', 'Rent', 'Bills', 'Shopping', 'Medical', 'O
 const investmentTypes = ['SIP', 'Mutual Fund', 'FD', 'Gold', 'Stocks', 'Insurance', 'Other'];
 const accountTypes = ['Bank account', 'Cash', 'UPI wallet', 'Credit card'];
 const appTypes = ['Google Pay', 'PhonePe', 'Paytm', 'Credit Card App', 'Bank App', 'Other'];
+const cardNetworks = ['Visa', 'Mastercard', 'RuPay', 'Amex', 'Other'];
+const paymentSources = ['Cash', 'Bank account', 'UPI app', 'Direct Credit Card', 'UPI via RuPay Credit Card'];
 const colors = ['#0f9f86', '#e35d43', '#d89b16', '#2563eb', '#7c3aed', '#0891b2'];
 
 function useData(path, deps = []) {
@@ -41,8 +43,9 @@ function Shell({ profile }) {
   const [year, setYear] = useState(defaultYear);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [standalone, setStandalone] = useState(false);
+  const overview = useData(`/dashboard?month=${month}&year=${year}`, [month, year]);
   const nav = [
-    ['Dashboard', Home], ['Salary', IndianRupee], ['Expenses', CreditCard], ['EMI / Loans', Landmark],
+    ['Dashboard', Home], ['Salary', IndianRupee], ['Expenses', CreditCard], ['Credit Cards', CreditCard], ['EMI / Loans', Landmark],
     ['Accounts', WalletCards], ['Investments', PiggyBank], ['Payment Apps', Smartphone], ['Reminders', Bell],
     ['Reports', LineChart], ['Settings', Settings]
   ];
@@ -71,13 +74,13 @@ function Shell({ profile }) {
     setMoreOpen(false);
   }
   return (
-    <div className="min-h-dvh bg-[#111] text-ink">
-      <div className="mx-auto min-h-dvh max-w-[1500px] bg-paper md:rounded-none">
-      <aside className="fixed bottom-0 left-0 right-0 z-30 hidden border-t border-stone-200 bg-white/95 pb-safe shadow-[0_-16px_35px_rgba(0,0,0,0.08)] backdrop-blur md:top-6 md:bottom-6 md:left-6 md:right-auto md:block md:h-auto md:w-72 md:rounded-[1.5rem] md:border md:border-stone-100 md:pb-0 md:shadow-phone">
+    <div className="min-h-dvh bg-slate-950 text-ink">
+      <div className="mx-auto min-h-dvh max-w-[1800px] bg-paper md:rounded-none">
+      <aside className="fixed bottom-0 left-0 right-0 z-30 hidden border-t border-slate-200 bg-white/95 pb-safe shadow-[0_-16px_35px_rgba(0,0,0,0.08)] backdrop-blur md:top-4 md:bottom-4 md:left-4 md:right-auto md:block md:h-auto md:w-72 md:rounded-[1.5rem] md:border md:border-slate-200 md:pb-0 md:shadow-phone">
         <div className="hidden px-6 py-6 md:block">
           <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-xl bg-coral text-white shadow-soft"><IndianRupee size={22} /></div>
-            <div><h1 className="text-xl font-bold">FinTrack Pro</h1><p className="text-xs text-coral">easy money manager</p></div>
+            <div className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-indigo-600 to-emerald-500 text-white shadow-soft"><IndianRupee size={22} /></div>
+            <div><h1 className="text-xl font-bold">FinTrack Pro</h1><p className="text-xs text-slate-500">Premium finance OS</p></div>
           </div>
         </div>
         <nav className="flex overflow-x-auto px-2 py-2 md:block md:px-3">
@@ -91,15 +94,21 @@ function Shell({ profile }) {
       <MobileBottomNav tabs={mobileTabs} page={page} isMorePage={isMorePage} onPage={go} onMore={() => setMoreOpen(true)} />
       {moreOpen && <MoreSheet pages={morePages} active={page} onClose={() => setMoreOpen(false)} onPage={go} />}
       <main className="pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:ml-80 md:pb-0">
-        <header className="sticky top-0 z-20 border-b border-stone-200/70 bg-paper/95 px-4 pb-3 pt-safe backdrop-blur md:px-8 md:pb-4">
-          <div className="flex items-start justify-between gap-3">
+        <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-paper/90 px-4 pb-3 pt-safe backdrop-blur-xl md:px-8 md:pb-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-coral md:text-sm md:normal-case md:tracking-normal">FinTrack Pro</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-coral">FinTrack Pro / {page}</p>
               <h2 className="truncate text-2xl font-bold tracking-tight md:text-3xl">{page}</h2>
-              {isSupabaseMode && <p className="mt-1 text-xs font-semibold text-mint">{standalone ? 'Mobile app mode' : 'Online database connected'} {profile?.role === 'admin' ? '- Admin' : ''}</p>}
+              {isSupabaseMode && <p className="mt-1 text-xs font-semibold text-emerald-600">{standalone ? 'Mobile app mode' : 'Online database connected'} {profile?.role === 'admin' ? '- Admin' : ''}</p>}
             </div>
-            <div className="flex shrink-0 gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2">
+              <div className="relative hidden min-w-[220px] max-w-sm flex-1 lg:block">
+                <Search className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18} />
+                <input className="input h-11 pl-10" placeholder="Search transactions, cards, reminders" />
+              </div>
+              <NotificationBell items={buildNotifications(overview.data || {})} />
               {installPrompt && <button className="icon-btn hidden sm:inline-flex" onClick={installApp}><Download size={16} /> Install</button>}
+              <div className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 sm:flex"><UserCircle size={18} />{profile?.role || 'User'}</div>
               {isSupabaseMode && <button className="icon-btn px-3" onClick={() => supabase.auth.signOut()}>Sign out</button>}
             </div>
           </div>
@@ -112,6 +121,7 @@ function Shell({ profile }) {
           {page === 'Dashboard' && <Dashboard month={month} year={year} />}
           {page === 'Salary' && <Salary month={month} year={year} />}
           {page === 'Expenses' && <Expenses month={month} year={year} />}
+          {page === 'Credit Cards' && <CreditCards month={month} year={year} />}
           {page === 'EMI / Loans' && <Loans />}
           {page === 'Accounts' && <Accounts />}
           {page === 'Investments' && <Investments month={month} year={year} />}
@@ -161,6 +171,32 @@ function MoreSheet({ pages, active, onClose, onPage }) {
         ))}
       </div>
     </section>
+  </div>;
+}
+
+function NotificationBell({ items }) {
+  const [open, setOpen] = useState(false);
+  const [read, setRead] = useState({});
+  const unread = items.filter((item) => !read[item.id]).length;
+  return <div className="relative">
+    <button className="icon-btn relative h-11 w-11 px-0" onClick={() => setOpen(!open)} title="Notifications">
+      <Bell size={18} />
+      {unread > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">{unread}</span>}
+    </button>
+    {open && <div className="absolute right-0 top-12 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-phone">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="font-bold">Notifications</h3>
+        <button className="text-xs font-semibold text-coral" onClick={() => setRead(Object.fromEntries(items.map((item) => [item.id, true])))}>Mark all read</button>
+      </div>
+      <div className="max-h-80 space-y-2 overflow-y-auto">
+        {items.map((item) => <button key={item.id} onClick={() => setRead({ ...read, [item.id]: true })} className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${read[item.id] ? 'border-slate-100 bg-slate-50 text-slate-500' : 'border-indigo-100 bg-blush text-ink'}`}>
+          <b>{item.title}</b>
+          <p className="mt-1 text-xs">{item.message}</p>
+        </button>)}
+        {!items.length && <p className="py-6 text-center text-sm text-slate-500">No alerts right now.</p>}
+      </div>
+      {!!items.length && <button className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold" onClick={() => setRead({})}>Clear read state</button>}
+    </div>}
   </div>;
 }
 
@@ -323,9 +359,10 @@ function Dashboard({ month, year }) {
   const { data, load } = useData(`/dashboard?month=${month}&year=${year}`, [month, year]);
   const [notificationStatus, setNotificationStatus] = useState(notificationPermission());
   const cards = [
-    ['Income', data.salary, IndianRupee, 'bg-coral'], ['Expenses', data.expenses, CreditCard, 'bg-[#ff7c97]'],
-    ['EMI', data.emiPaid, Landmark, 'bg-[#4d5588]'], ['Balance', data.remaining, WalletCards, 'bg-mint'],
-    ['Invested', data.investments, PiggyBank, 'bg-saffron']
+    ['Income', data.salary, IndianRupee, 'bg-coral'], ['Expenses', data.expenses, CreditCard, 'bg-slate-700'],
+    ['EMI', data.emiPaid, Landmark, 'bg-[#4d5588]'], ['Balance', data.remaining, WalletCards, Number(data.remaining || 0) < 0 ? 'bg-danger' : 'bg-mint'],
+    ['Invested', data.investments, PiggyBank, 'bg-saffron'], ['Card Used', data.creditCardSummary?.usedLimit, CreditCard, 'bg-indigo-600'],
+    ['Available Credit', data.creditCardSummary?.availableLimit, WalletCards, 'bg-emerald-600']
   ];
   useEffect(() => {
     if (notificationStatus === 'granted') notifyUpcomingEmis(data.emiReminders || []);
@@ -350,7 +387,11 @@ function Dashboard({ month, year }) {
   }
   return <div className="space-y-4 md:space-y-6">
     <DashboardShowcase data={data} month={month} year={year} />
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-5">{cards.map(([label, value, Icon, color]) => <Stat key={label} label={label} value={money(value)} Icon={Icon} color={color} />)}</div>
+    <AIInsightsPanel insights={dashboardInsights(data)} />
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">{cards.map(([label, value, Icon, color]) => <Stat key={label} label={label} value={money(value)} Icon={Icon} color={color} />)}</div>
+    <Panel title="Quick Actions">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">{['Add Salary', 'Add Expense', 'Add EMI', 'Add Investment', 'Transfer Account', 'Add Reminder', 'Add Credit Card Transaction'].map((label) => <button className="icon-btn justify-start" key={label}><Plus size={16} />{label}</button>)}</div>
+    </Panel>
     <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
       <Panel title="Account-wise Balance"><div className="grid gap-3 sm:grid-cols-2">{(data.accounts || []).map((a) => <div className="rounded-2xl border border-stone-100 bg-[#fafafa] p-3 md:p-4" key={a.id}><p className="text-xs text-stone-500 md:text-sm">{a.type}</p><h3 className="font-semibold">{a.name}</h3><p className="mt-2 text-lg font-bold md:text-xl">{money(a.balance)}</p></div>)}</div></Panel>
       <Panel title="Upcoming Reminders" action={<button onClick={load} className="icon-btn"><RefreshCcw size={16} /></button>}><List rows={data.reminders || []} render={(r) => <><b>{r.title}</b><span>{money(r.amount)} due {dateIn(r.due_date)}</span></>} /></Panel>
@@ -358,6 +399,7 @@ function Dashboard({ month, year }) {
     <Panel title="EMI Deduction Alerts" action={notificationStatus !== 'granted' && <button onClick={enableEmiNotifications} className="icon-btn"><Bell size={16} /> Enable</button>}>
       <EmiReminderList rows={data.emiReminders || []} onPaid={markEmiPaid} notificationStatus={notificationStatus} />
     </Panel>
+    <Panel title="Recent Credit Card Transactions"><List rows={data.cardTransactions || []} render={(r) => <><b>{r.merchant || r.category}</b><span>{money(r.amount)} on {dateIn(r.transaction_date)} via {r.payment_source}</span></>} /></Panel>
     <Panel title="Recent Transactions"><List rows={data.recent || []} render={(r) => <><b>{r.kind}: {r.title}</b><span>{money(r.amount)} on {dateIn(r.date)} {r.notes ? `- ${r.notes}` : ''}</span></>} /></Panel>
   </div>;
 }
@@ -462,6 +504,80 @@ function Expenses({ month, year }) {
     fields={[['date', 'date', 'Date'], ['amount', 'number', 'Amount'], ['category', 'select', 'Category', categories], ['notes', 'text', 'Notes'], ['payment_method', 'text', 'Payment method'], ['payment_app_id', 'select', 'Payment app', apps.data.map((a) => [a.id, a.name])], ['account_id', 'select', 'Account', accounts.data.map((a) => [a.id, a.name])]]}
     initial={{ date: iso(), amount: '', category: 'Food', notes: '', payment_method: 'UPI', payment_app_id: '', account_id: '' }}
     extra={<TransactionHeader rows={data} month={month} year={year} filters={filters} setFilters={setFilters} accounts={accounts.data} apps={apps.data} />} />;
+}
+
+function CreditCards({ month, year }) {
+  const cards = useData('/credit_cards', []);
+  const transactions = useData(`/credit_card_transactions?month=${month}&year=${year}`, [month, year]);
+  const apps = useData('/payment_apps', []);
+  const accounts = useData('/accounts', []);
+  const [cardForm, setCardForm] = useState({ card_name: '', bank_name: '', network: 'RuPay', last4: '', credit_limit: '', used_limit: 0, billing_start_day: 1, billing_end_day: 30, due_day: 20, minimum_due: 0, total_due: 0, linked_upi_apps: '', notes: '', active: 1 });
+  const [txForm, setTxForm] = useState({ transaction_date: iso(), merchant: '', amount: '', category: 'Shopping', payment_source: 'Direct Credit Card', transaction_type: 'Purchase', credit_card_id: '', payment_app_id: '', account_id: '', notes: '' });
+  const summary = summarizeCards(cards.data, transactions.data);
+  async function saveCard(e) {
+    e.preventDefault();
+    await api('/credit_cards', { method: 'POST', body: JSON.stringify(cardForm) });
+    setCardForm({ card_name: '', bank_name: '', network: 'RuPay', last4: '', credit_limit: '', used_limit: 0, billing_start_day: 1, billing_end_day: 30, due_day: 20, minimum_due: 0, total_due: 0, linked_upi_apps: '', notes: '', active: 1 });
+    cards.load();
+  }
+  async function saveTransaction(e) {
+    e.preventDefault();
+    await api('/credit_card_transactions', { method: 'POST', body: JSON.stringify(txForm) });
+    setTxForm({ transaction_date: iso(), merchant: '', amount: '', category: 'Shopping', payment_source: 'Direct Credit Card', transaction_type: 'Purchase', credit_card_id: '', payment_app_id: '', account_id: '', notes: '' });
+    transactions.load();
+    cards.load();
+  }
+  if (cards.error || transactions.error) return <SetupMissing title="Credit Cards setup needed" message="Run supabase/credit-cards.sql in Supabase SQL Editor once, then refresh this page." />;
+  return <div className="space-y-4 md:space-y-6">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <Stat label="Total Limit" value={money(summary.totalLimit)} Icon={CreditCard} color="bg-coral" />
+      <Stat label="Used Limit" value={money(summary.usedLimit)} Icon={AlertTriangle} color={summary.usedLimit > summary.totalLimit * .8 ? 'bg-danger' : 'bg-saffron'} />
+      <Stat label="Available" value={money(summary.availableLimit)} Icon={WalletCards} color="bg-mint" />
+      <Stat label="Month Spend" value={money(summary.currentMonthSpend)} Icon={LineChart} color="bg-ink" />
+    </div>
+    <AIInsightsPanel insights={creditCardInsights(cards.data, transactions.data)} />
+    <Panel title="Credit Card Wallet">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {cards.data.map((card) => <CreditCardWidget key={card.id} card={card} />)}
+        {!cards.data.length && <EmptyState title="No credit cards yet" message="Add your first credit card to track limits, RuPay UPI transactions, and due dates." />}
+      </div>
+    </Panel>
+    <div className="grid gap-4 xl:grid-cols-2">
+      <Panel title="Add Credit Card">
+        <form onSubmit={saveCard} className="grid gap-3 md:grid-cols-2">
+          <FormField label="Card name"><input required className="input" value={cardForm.card_name} onChange={(e) => setCardForm({ ...cardForm, card_name: e.target.value })} /></FormField>
+          <FormField label="Bank name"><input required className="input" value={cardForm.bank_name} onChange={(e) => setCardForm({ ...cardForm, bank_name: e.target.value })} /></FormField>
+          <FormField label="Network"><select className="input" value={cardForm.network} onChange={(e) => setCardForm({ ...cardForm, network: e.target.value })}>{cardNetworks.map((item) => <option key={item}>{item}</option>)}</select></FormField>
+          <FormField label="Last 4 digits"><input className="input" maxLength="4" value={cardForm.last4} onChange={(e) => setCardForm({ ...cardForm, last4: e.target.value })} /></FormField>
+          <FormField label="Total credit limit"><input required className="input" type="number" value={cardForm.credit_limit} onChange={(e) => setCardForm({ ...cardForm, credit_limit: e.target.value })} /></FormField>
+          <FormField label="Used limit"><input className="input" type="number" value={cardForm.used_limit} onChange={(e) => setCardForm({ ...cardForm, used_limit: e.target.value })} /></FormField>
+          <FormField label="Billing start day"><input className="input" type="number" min="1" max="31" value={cardForm.billing_start_day} onChange={(e) => setCardForm({ ...cardForm, billing_start_day: e.target.value })} /></FormField>
+          <FormField label="Billing end day"><input className="input" type="number" min="1" max="31" value={cardForm.billing_end_day} onChange={(e) => setCardForm({ ...cardForm, billing_end_day: e.target.value })} /></FormField>
+          <FormField label="Payment due day"><input className="input" type="number" min="1" max="31" value={cardForm.due_day} onChange={(e) => setCardForm({ ...cardForm, due_day: e.target.value })} /></FormField>
+          <FormField label="Minimum due"><input className="input" type="number" value={cardForm.minimum_due} onChange={(e) => setCardForm({ ...cardForm, minimum_due: e.target.value })} /></FormField>
+          <FormField label="Linked UPI apps"><input className="input" value={cardForm.linked_upi_apps} onChange={(e) => setCardForm({ ...cardForm, linked_upi_apps: e.target.value })} placeholder="Google Pay, PhonePe" /></FormField>
+          <FormField label="Notes"><input className="input" value={cardForm.notes} onChange={(e) => setCardForm({ ...cardForm, notes: e.target.value })} /></FormField>
+          <button className="btn md:col-span-2"><Plus size={16} /> Add Card</button>
+        </form>
+      </Panel>
+      <Panel title="Add Card Transaction">
+        <form onSubmit={saveTransaction} className="grid gap-3 md:grid-cols-2">
+          <FormField label="Date"><input className="input" type="date" value={txForm.transaction_date} onChange={(e) => setTxForm({ ...txForm, transaction_date: e.target.value })} /></FormField>
+          <FormField label="Merchant"><input required className="input" value={txForm.merchant} onChange={(e) => setTxForm({ ...txForm, merchant: e.target.value })} /></FormField>
+          <FormField label="Amount"><input required className="input" type="number" value={txForm.amount} onChange={(e) => setTxForm({ ...txForm, amount: e.target.value })} /></FormField>
+          <FormField label="Category"><select className="input" value={txForm.category} onChange={(e) => setTxForm({ ...txForm, category: e.target.value })}>{categories.map((item) => <option key={item}>{item}</option>)}</select></FormField>
+          <FormField label="Payment source"><select className="input" value={txForm.payment_source} onChange={(e) => setTxForm({ ...txForm, payment_source: e.target.value })}>{paymentSources.map((item) => <option key={item}>{item}</option>)}</select></FormField>
+          <FormField label="Type"><select className="input" value={txForm.transaction_type} onChange={(e) => setTxForm({ ...txForm, transaction_type: e.target.value })}><option>Purchase</option><option>Bill Payment</option></select></FormField>
+          {['Direct Credit Card', 'UPI via RuPay Credit Card'].includes(txForm.payment_source) && <FormField label="Credit card"><select required className="input" value={txForm.credit_card_id} onChange={(e) => setTxForm({ ...txForm, credit_card_id: e.target.value })}><option value="">Select card</option>{cards.data.map((card) => <option value={card.id} key={card.id}>{card.card_name} {card.last4 ? `••${card.last4}` : ''}</option>)}</select></FormField>}
+          {['UPI app', 'UPI via RuPay Credit Card'].includes(txForm.payment_source) && <FormField label="UPI app"><select className="input" value={txForm.payment_app_id} onChange={(e) => setTxForm({ ...txForm, payment_app_id: e.target.value })}><option value="">Select UPI app</option>{apps.data.map((app) => <option value={app.id} key={app.id}>{app.name}</option>)}</select></FormField>}
+          {['Cash', 'Bank account'].includes(txForm.payment_source) && <FormField label="Account"><select className="input" value={txForm.account_id} onChange={(e) => setTxForm({ ...txForm, account_id: e.target.value })}><option value="">Select account</option>{accounts.data.map((account) => <option value={account.id} key={account.id}>{account.name}</option>)}</select></FormField>}
+          <FormField label="Notes"><input className="input" value={txForm.notes} onChange={(e) => setTxForm({ ...txForm, notes: e.target.value })} /></FormField>
+          <button className="btn md:col-span-2"><Plus size={16} /> Save Transaction</button>
+        </form>
+      </Panel>
+    </div>
+    <Panel title="Credit Card Transactions"><DataTable rows={transactions.data} columns={['transaction_date', 'merchant', 'amount', 'payment_source', 'credit_card_name']} /></Panel>
+  </div>;
 }
 
 function Loans() {
@@ -685,6 +801,9 @@ function Reports({ month, year }) {
     <Panel title="EMI Report"><MiniBars data={data.emi || []} /></Panel>
     <Panel title="Account-wise Report"><MiniBars data={data.byAccount || []} /></Panel>
     <Panel title="Payment App-wise Report"><MiniBars data={data.byPaymentApp || []} /></Panel>
+    <Panel title="Credit Card-wise Spending"><MiniBars data={data.byCreditCard || []} /></Panel>
+    <Panel title="Card Utilization"><MiniBars data={data.cardUtilization || []} /></Panel>
+    <Panel title="Payment Source Usage"><PieBlock data={data.byPaymentSource || []} /></Panel>
     <Panel title="Salary Remaining Report"><div className="grid gap-3 sm:grid-cols-2"><Stat label="Salary" value={money(data.salaryRemaining?.salary)} Icon={IndianRupee} color="bg-mint" /><Stat label="Remaining" value={money(data.salaryRemaining?.remaining)} Icon={WalletCards} color="bg-ink" /></div></Panel>
     </div>
   </div>;
@@ -874,9 +993,15 @@ function TransferForm({ accounts, onDone }) {
   return <Panel title="Account Transfer"><form onSubmit={save} className="grid gap-3 md:grid-cols-5"><Field name="from_account_id" type="select" label="From" value={form.from_account_id} options={accounts.map((a) => [a.id, a.name])} onChange={(v) => setForm({ ...form, from_account_id: v })} /><Field name="to_account_id" type="select" label="To" value={form.to_account_id} options={accounts.map((a) => [a.id, a.name])} onChange={(v) => setForm({ ...form, to_account_id: v })} /><Field name="amount" type="number" label="Amount" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} /><Field name="date" type="date" label="Date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} /><button className="btn self-end">Transfer</button></form></Panel>;
 }
 
+function FormField({ label, children }) { return <label className="text-sm font-semibold text-slate-600"><span className="mb-1 block">{label}</span>{children}</label>; }
 function Panel({ title, children, action }) { return <section className="soft-panel"><div className="mb-3 flex items-center justify-between gap-3 md:mb-4"><h3 className="text-base font-bold tracking-tight md:text-lg">{title}</h3>{action}</div>{children}</section>; }
 function Stat({ label, value, Icon, color }) { return <div className="rounded-[1.25rem] border border-stone-100 bg-white p-3 shadow-soft md:rounded-[1.75rem] md:p-4"><div className={`mb-3 grid h-9 w-9 place-items-center rounded-xl ${color} text-white md:mb-4 md:h-11 md:w-11 md:rounded-2xl`}><Icon size={18} /></div><p className="text-xs font-medium text-stone-500 md:text-sm">{label}</p><p className="mt-1 break-words text-xl font-bold tracking-tight md:text-2xl">{value}</p></div>; }
 function List({ rows, render }) { return <div className="space-y-2">{rows.map((row, i) => <div className="transaction-row flex flex-col gap-1 text-sm" key={row.id || i}>{render(row)}</div>)} {!rows.length && <p className="py-4 text-sm text-stone-500">Nothing to show.</p>}</div>; }
+function EmptyState({ title, message }) { return <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center"><Sparkles className="mx-auto text-coral" /><h3 className="mt-3 font-bold">{title}</h3><p className="mt-1 text-sm text-slate-500">{message}</p></div>; }
+function SetupMissing({ title, message }) { return <div className="grid min-h-[50vh] place-items-center"><section className="max-w-lg rounded-3xl bg-white p-6 text-center shadow-phone"><AlertTriangle className="mx-auto text-saffron" size={34} /><h2 className="mt-3 text-xl font-bold">{title}</h2><p className="mt-2 text-sm text-slate-600">{message}</p></section></div>; }
+function DataTable({ rows, columns }) { return <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-sm"><thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">{columns.map((column) => <th className="px-3 py-2" key={column}>{column.replaceAll('_', ' ')}</th>)}</tr></thead><tbody>{rows.map((row) => <tr className="border-b border-slate-100" key={row.id}>{columns.map((column) => <td className="px-3 py-3" key={column}>{column.includes('amount') ? money(row[column]) : column.includes('date') ? dateIn(row[column]) : row[column] || '-'}</td>)}</tr>)}</tbody></table>{!rows.length && <EmptyState title="No records" message="Add a record to see it here." />}</div>; }
+function AIInsightsPanel({ insights }) { return <Panel title="AI Insights" action={<span className="rounded-full bg-blush px-3 py-1 text-xs font-bold text-coral">Local AI</span>}><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{insights.map((item) => <div className={`rounded-2xl border p-3 ${item.severity === 'danger' ? 'border-red-100 bg-red-50 text-red-700' : item.severity === 'warning' ? 'border-amber-100 bg-amber-50 text-amber-800' : 'border-indigo-100 bg-indigo-50 text-indigo-800'}`} key={item.id}><div className="mb-2 flex items-center gap-2 font-bold">{item.severity === 'ok' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}{item.title}</div><p className="text-sm">{item.message}</p></div>)}{!insights.length && <p className="text-sm text-slate-500">No insights yet. Add transactions to generate local AI-style analysis.</p>}</div></Panel>; }
+function CreditCardWidget({ card }) { const pct = cardUtilization(card); const color = pct >= 80 ? 'bg-danger' : pct >= 50 ? 'bg-saffron' : 'bg-mint'; return <article className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-800 p-5 text-white shadow-phone"><div className="flex items-start justify-between"><div><p className="text-sm text-white/65">{card.bank_name}</p><h3 className="text-xl font-bold">{card.card_name}</h3></div><CreditCard /></div><div className="mt-6 flex items-end justify-between"><p className="font-mono text-lg tracking-widest">•••• {card.last4 || '----'}</p><span className="rounded-full bg-white/15 px-3 py-1 text-xs">{card.network}</span></div><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-white/70"><span>Used {money(card.used_limit)}</span><span>{pct}%</span></div><div className="h-2 rounded-full bg-white/15"><div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, pct)}%` }} /></div></div><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-white/55">Available</p><b>{money(Number(card.credit_limit || 0) - Number(card.used_limit || 0))}</b></div><div><p className="text-white/55">Due day</p><b>{card.due_day}</b></div></div></article>; }
 function Chart({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><AreaChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Area type="monotone" dataKey="value" stroke="#ff4f45" fill="#ffe1df" /></AreaChart></ResponsiveContainer></div>; }
 function MiniBars({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><BarChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="value" fill="#ff4f45" radius={[10, 10, 0, 0]} /></BarChart></ResponsiveContainer></div>; }
 function PieBlock({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius={95} label>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => money(v)} /></PieChart></ResponsiveContainer></div>; }
@@ -901,6 +1026,55 @@ function loanInsights(loan) {
     paidPercent,
     nextDueDate: nextLoanDueDate(loan)
   };
+}
+function summarizeCards(cards = [], transactions = []) {
+  const totalLimit = cards.reduce((sum, card) => sum + Number(card.credit_limit || 0), 0);
+  const usedLimit = cards.reduce((sum, card) => sum + Number(card.used_limit || 0), 0);
+  const currentMonthSpend = transactions.filter((row) => row.transaction_type !== 'Bill Payment').reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  return { totalLimit, usedLimit, availableLimit: Math.max(0, totalLimit - usedLimit), currentMonthSpend };
+}
+function cardUtilization(card) {
+  return Number(card?.credit_limit || 0) > 0 ? Math.round((Number(card.used_limit || 0) / Number(card.credit_limit || 0)) * 100) : 0;
+}
+function creditCardInsights(cards = [], transactions = []) {
+  const insights = [];
+  cards.forEach((card) => {
+    const pct = cardUtilization(card);
+    if (pct >= 80) insights.push({ id: `util-${card.id}`, title: 'High utilization', message: `${card.card_name} is at ${pct}% utilization. Pay down the bill to protect available credit.`, severity: 'danger' });
+    else if (pct >= 50) insights.push({ id: `util-${card.id}`, title: 'Moderate utilization', message: `${card.card_name} is at ${pct}% utilization. Keep it below 50% for safer cash flow.`, severity: 'warning' });
+    if (daysUntil(nextDueDate(card.due_day)) <= 7) insights.push({ id: `due-${card.id}`, title: 'Bill due soon', message: `${card.card_name} payment is due on ${dateIn(nextDueDate(card.due_day))}.`, severity: 'warning' });
+  });
+  const rupayCount = transactions.filter((row) => row.payment_source === 'UPI via RuPay Credit Card').length;
+  if (rupayCount) insights.push({ id: 'rupay-usage', title: 'RuPay UPI usage', message: `UPI via RuPay card used ${rupayCount} time${rupayCount === 1 ? '' : 's'} this month.`, severity: 'ok' });
+  return insights;
+}
+function dashboardInsights(data = {}) {
+  const insights = [];
+  if (Number(data.remaining || 0) < 0) insights.push({ id: 'balance-negative', title: 'Balance warning', message: `Your current month balance is negative by ${money(Math.abs(data.remaining))}.`, severity: 'danger' });
+  const salary = Number(data.salary || 0);
+  if (salary > 0) {
+    const savingsRate = Math.round((Number(data.remaining || 0) / salary) * 100);
+    insights.push({ id: 'savings-rate', title: 'Savings rate', message: `Estimated savings rate this month is ${savingsRate}%.`, severity: savingsRate < 10 ? 'warning' : 'ok' });
+    const emiBurden = Math.round((Number(data.emiPaid || 0) / salary) * 100);
+    if (emiBurden > 35) insights.push({ id: 'emi-burden', title: 'EMI burden high', message: `EMI burden is ${emiBurden}% of monthly income.`, severity: 'warning' });
+  }
+  (data.creditCardSummary?.warnings || []).forEach((item) => insights.push(item));
+  const upcomingEmi = (data.emiReminders || [])[0];
+  if (upcomingEmi) insights.push({ id: 'next-emi', title: 'Next EMI', message: `${upcomingEmi.loan_name} is due on ${dateIn(upcomingEmi.due_date)}.`, severity: daysUntil(upcomingEmi.due_date) <= 3 ? 'warning' : 'ok' });
+  return insights.slice(0, 6);
+}
+function buildNotifications(data) {
+  const items = [];
+  if (Number(data.remaining || 0) < 0) items.push({ id: 'negative-balance', title: 'Negative balance', message: `This month balance is ${money(data.remaining)}.`, severity: 'danger' });
+  (data.emiReminders || []).forEach((emi) => { if (daysUntil(emi.due_date) <= 7) items.push({ id: `emi-${emi.id}`, title: 'EMI due soon', message: `${emi.loan_name} EMI of ${money(emi.amount)} is due on ${dateIn(emi.due_date)}.`, severity: 'warning' }); });
+  (data.reminders || []).forEach((reminder) => { if (daysUntil(reminder.due_date) <= 7) items.push({ id: `reminder-${reminder.id}`, title: 'Reminder due', message: `${reminder.title} is due on ${dateIn(reminder.due_date)}.`, severity: 'warning' }); });
+  (data.creditCardSummary?.warnings || []).forEach((warning) => items.push(warning));
+  return items.slice(0, 12);
+}
+function nextDueDate(day) {
+  const date = dueDateForMonth(new Date().getFullYear(), new Date().getMonth(), day || 1);
+  if (date < new Date().setHours(0, 0, 0, 0)) return formatDateInput(dueDateForMonth(new Date().getFullYear(), new Date().getMonth() + 1, day || 1));
+  return formatDateInput(date);
 }
 function loanTenureMonths(start, end) {
   if (!start || !end) return 0;
