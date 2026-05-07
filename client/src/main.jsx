@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, PiggyBank, Plus, RefreshCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, WalletCards } from 'lucide-react';
-import { api, exportCsv, getMyProfile, importCsv, isSupabaseMode, listProfiles, supabase, updateProfile } from './api';
+import { api, exportCsv, getMyProfile, importCsv, isSupabaseMode, listProfiles, supabase, supabaseConfigError, updateProfile } from './api';
 import { ErrorBoundary } from './ErrorBoundary';
 import './styles.css';
 
@@ -123,6 +123,7 @@ function AuthGate() {
     const { data: listener } = supabase.auth.onAuthStateChange((_, nextSession) => loadProfile(nextSession));
     return () => listener.subscription.unsubscribe();
   }, []);
+  if (supabaseConfigError) return <SetupError message={supabaseConfigError} />;
   if (!isSupabaseMode) return <Shell />;
   if (loading) return <div className="grid min-h-screen place-items-center bg-paper text-ink">Loading FinTrack Pro...</div>;
   if (error) return <AccessMessage title="Setup needs attention" message={error} detail="Run supabase/complete-setup.sql in your Supabase SQL Editor, then refresh this page." />;
@@ -131,6 +132,21 @@ function AuthGate() {
   if (profile?.status === 'blocked') return <AccessMessage title="Access blocked" message="Your account access is blocked. Contact the FinTrack Pro admin." />;
   if (profile?.status !== 'approved') return <AccessMessage title="Access not active" message="Your account is not approved yet." />;
   return <Shell profile={profile} />;
+}
+
+function SetupError({ message }) {
+  return <div className="grid min-h-screen place-items-center bg-[#111] px-4">
+    <section className="w-full max-w-lg rounded-[2rem] bg-white p-6 text-center shadow-phone">
+      <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-coral text-white"><Settings size={26} /></div>
+      <h1 className="text-2xl font-bold">Fix Vercel Supabase settings</h1>
+      <p className="mt-3 rounded-2xl bg-blush px-4 py-3 text-sm text-coral">{message}</p>
+      <div className="mt-4 text-left text-sm text-stone-600">
+        <p className="font-semibold text-ink">Required Vercel values:</p>
+        <p className="mt-2">VITE_SUPABASE_URL = https://ligmgikrldjjlyjhxlqw.supabase.co</p>
+        <p className="mt-1">VITE_SUPABASE_ANON_KEY = your Supabase anon public key</p>
+      </div>
+    </section>
+  </div>;
 }
 
 function AccessMessage({ title, message, detail }) {

@@ -4,8 +4,24 @@ const REST_API = '/api';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const isSupabaseMode = Boolean(supabaseUrl && supabaseKey);
+export const supabaseConfigError = validateSupabaseConfig(supabaseUrl, supabaseKey);
+export const isSupabaseMode = Boolean(supabaseUrl && supabaseKey && !supabaseConfigError);
 export const supabase = isSupabaseMode ? createClient(supabaseUrl, supabaseKey) : null;
+
+function validateSupabaseConfig(url, key) {
+  if (!url && !key) return '';
+  if (!url || !key) return 'Both VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required.';
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith('.supabase.co')) {
+      return 'VITE_SUPABASE_URL must look like https://your-project-id.supabase.co';
+    }
+  } catch {
+    return 'VITE_SUPABASE_URL must be a valid HTTPS URL.';
+  }
+  if (!key.startsWith('eyJ')) return 'VITE_SUPABASE_ANON_KEY does not look like a valid Supabase anon key.';
+  return '';
+}
 
 const tableColumns = {
   salaries: ['month', 'year', 'amount', 'notes'],
