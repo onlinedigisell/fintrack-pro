@@ -113,10 +113,16 @@ This is the recommended free path when you do not want to add a card for Render.
 1. Go to [Supabase](https://supabase.com).
 2. Create a free project.
 3. Open **SQL Editor**.
-4. Copy everything from `supabase/schema.sql`.
+4. Copy everything from `supabase/complete-setup.sql`.
 5. Run it once.
 
-This creates all FinTrack Pro tables and sample data.
+This creates all FinTrack Pro tables, login profiles, admin approval rules, and Row Level Security policies.
+
+Use this single setup file for new Supabase projects:
+
+```text
+supabase/complete-setup.sql
+```
 
 If you already ran the old schema before authentication was added, also run:
 
