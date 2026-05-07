@@ -120,7 +120,7 @@ function AuthGate() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(isSupabaseMode);
   const [error, setError] = useState('');
-  async function loadProfile(nextSession) {
+  async function loadProfile(nextSession, alive = () => true) {
     setSession(nextSession);
     setError('');
     if (!nextSession) {
@@ -129,29 +129,75 @@ function AuthGate() {
       return;
     }
     try {
-      setProfile(await getMyProfile());
+      const nextProfile = await withTimeout(getMyProfile(), 10000, 'Profile loading timed out. Please refresh once or sign in again.');
+      if (alive()) setProfile(nextProfile);
     } catch (err) {
-      setError(err.message || 'Unable to load account profile');
-      setProfile(null);
+      if (alive()) {
+        setError(err.message || 'Unable to load account profile');
+        setProfile(null);
+      }
     } finally {
-      setLoading(false);
+      if (alive()) setLoading(false);
     }
   }
   useEffect(() => {
     if (!isSupabaseMode) return;
-    supabase.auth.getSession().then(({ data }) => loadProfile(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_, nextSession) => loadProfile(nextSession));
-    return () => listener.subscription.unsubscribe();
+    let alive = true;
+    const isAlive = () => alive;
+    withTimeout(supabase.auth.getSession(), 10000, 'Login check timed out. Please refresh once or sign in again.')
+      .then(({ data }) => loadProfile(data.session, isAlive))
+      .catch((err) => {
+        if (alive) {
+          setError(err.message || 'Unable to check login');
+          setLoading(false);
+        }
+      });
+    const { data: listener } = supabase.auth.onAuthStateChange((_, nextSession) => {
+      window.setTimeout(() => loadProfile(nextSession, isAlive), 0);
+    });
+    return () => {
+      alive = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
   if (supabaseConfigError) return <SetupError message={supabaseConfigError} />;
   if (!isSupabaseMode) return <Shell />;
-  if (loading) return <div className="grid min-h-screen place-items-center bg-paper text-ink">Loading FinTrack Pro...</div>;
-  if (error) return <AccessMessage title="Setup needs attention" message={error} detail="Run supabase/complete-setup.sql in your Supabase SQL Editor, then refresh this page." />;
+  if (loading) return <LoadingScreen />;
+  if (error) return <AccessMessage title="Setup needs attention" message={error} detail="Refresh once. If it continues, sign out and sign in again." action={<button className="btn" onClick={() => supabase.auth.signOut()}>Sign out</button>} />;
   if (!session) return <LoginScreen />;
   if (profile?.status === 'pending') return <AccessMessage title="Waiting for admin approval" message="Your account is created, but the admin must approve it before you can use FinTrack Pro." />;
   if (profile?.status === 'blocked') return <AccessMessage title="Access blocked" message="Your account access is blocked. Contact the FinTrack Pro admin." />;
   if (profile?.status !== 'approved') return <AccessMessage title="Access not active" message="Your account is not approved yet." />;
   return <Shell profile={profile} />;
+}
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
+
+function LoadingScreen() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), 6000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return <div className="grid min-h-screen place-items-center bg-paper px-4 text-ink">
+    <section className="w-full max-w-sm rounded-[2rem] bg-white p-6 text-center shadow-soft">
+      <div className="mx-auto mb-4 h-10 w-10 animate-pulse rounded-2xl bg-coral" />
+      <h1 className="text-xl font-bold">Loading FinTrack Pro...</h1>
+      {slow && <div className="mt-4 space-y-3">
+        <p className="text-sm text-stone-500">Taking longer than expected. Refresh once, or sign out and sign in again.</p>
+        <div className="flex justify-center gap-2">
+          <button className="icon-btn" onClick={() => window.location.reload()}>Refresh</button>
+          <button className="btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
+        </div>
+      </div>}
+    </section>
+  </div>;
 }
 
 function SetupError({ message }) {
