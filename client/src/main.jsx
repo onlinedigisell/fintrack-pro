@@ -468,13 +468,168 @@ function Loans() {
   const { data, load } = useData('/loans/summary/all', []);
   const accounts = useData('/accounts', []);
   const [pay, setPay] = useState({});
+  const [selectedLoan, setSelectedLoan] = useState(null);
   const fields = [['loan_name', 'text', 'Loan name'], ['loan_type', 'text', 'Loan type'], ['total_amount', 'number', 'Total amount'], ['emi_amount', 'number', 'EMI amount'], ['start_date', 'date', 'Start date'], ['end_date', 'date', 'End date'], ['interest_rate', 'number', 'Interest %'], ['lender', 'text', 'Lender/bank'], ['account_id', 'select', 'Account', accounts.data.map((a) => [a.id, a.name])], ['due_day', 'number', 'EMI deduction day'], ['notes', 'text', 'Notes']];
-  async function markPaid(loan) {
-    await api(`/loans/${loan.id}/pay`, { method: 'POST', body: JSON.stringify({ payment_date: pay[loan.id]?.date || iso(), amount: pay[loan.id]?.amount || loan.emi_amount, account_id: loan.account_id, notes: 'Marked paid' }) });
+  async function markPaid(loan, date, amount) {
+    await api(`/loans/${loan.id}/pay`, { method: 'POST', body: JSON.stringify({ payment_date: date || pay[loan.id]?.date || iso(), amount: amount || pay[loan.id]?.amount || loan.emi_amount, account_id: loan.account_id, notes: 'Marked paid' }) });
     load();
   }
-  return <CrudPage title="EMI / Loan Tracker" table="loans" rows={data} load={load} fields={fields} initial={{ loan_name: '', loan_type: 'Personal', total_amount: '', emi_amount: '', start_date: iso(), end_date: iso(), interest_rate: '', lender: '', account_id: '', due_day: 5, notes: '' }}
-    renderExtraRow={(loan) => <div className="mt-3 grid gap-2 text-sm sm:grid-cols-4"><span>Paid: {loan.emis_paid} EMIs</span><span>Total: {money(loan.total_paid)}</span><span>Left: {loan.remaining_emi_count} EMIs</span><span>Balance: {money(loan.remaining_amount)}</span><input className="input" type="date" value={pay[loan.id]?.date || iso()} onChange={(e) => setPay({ ...pay, [loan.id]: { ...pay[loan.id], date: e.target.value } })} /><input className="input" type="number" placeholder="Amount" onChange={(e) => setPay({ ...pay, [loan.id]: { ...pay[loan.id], amount: e.target.value } })} /><button onClick={() => markPaid(loan)} className="btn sm:col-span-2">Mark EMI Paid</button></div>} />;
+  return <>
+    <CrudPage title="EMI / Loan Tracker" table="loans" rows={data} load={load} fields={fields} initial={{ loan_name: '', loan_type: 'Personal', total_amount: '', emi_amount: '', start_date: iso(), end_date: iso(), interest_rate: '', lender: '', account_id: '', due_day: 5, notes: '' }}
+      extra={<LoanPortfolioSummary loans={data} />}
+      renderExtraRow={(loan) => <LoanRowInsights loan={loan} pay={pay[loan.id]} onPayChange={(next) => setPay({ ...pay, [loan.id]: { ...pay[loan.id], ...next } })} onPaid={() => markPaid(loan)} onOpen={() => setSelectedLoan(loan)} />} />
+    {selectedLoan && <LoanInsightModal loan={selectedLoan} onClose={() => setSelectedLoan(null)} onPaid={(date, amount) => markPaid(selectedLoan, date, amount)} />}
+  </>;
+}
+
+function LoanPortfolioSummary({ loans }) {
+  const totals = loans.reduce((acc, loan) => {
+    const insight = loanInsights(loan);
+    acc.total += Number(loan.total_amount || 0);
+    acc.paid += Number(loan.total_paid || 0);
+    acc.remaining += Number(loan.remaining_amount || 0);
+    acc.monthly += Number(loan.emi_amount || 0);
+    acc.interest += insight.estimatedInterest;
+    return acc;
+  }, { total: 0, paid: 0, remaining: 0, monthly: 0, interest: 0 });
+  return <Panel title="Loan Portfolio">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <Stat label="Loan Principal" value={money(totals.total)} Icon={Landmark} color="bg-[#4d5588]" />
+      <Stat label="Paid Till Now" value={money(totals.paid)} Icon={IndianRupee} color="bg-mint" />
+      <Stat label="Remaining" value={money(totals.remaining)} Icon={WalletCards} color="bg-coral" />
+      <Stat label="Monthly EMI" value={money(totals.monthly)} Icon={CreditCard} color="bg-saffron" />
+    </div>
+  </Panel>;
+}
+
+function LoanRowInsights({ loan, pay, onPayChange, onPaid, onOpen }) {
+  const insight = loanInsights(loan);
+  return <div className="mt-3 space-y-3 text-sm">
+    <div className="grid gap-2 sm:grid-cols-4">
+      <span>Paid: {loan.emis_paid} EMIs</span>
+      <span>Total: {money(loan.total_paid)}</span>
+      <span>Left: {loan.remaining_emi_count} EMIs</span>
+      <span>Progress: {insight.paidPercent}%</span>
+    </div>
+    <div className="h-2 overflow-hidden rounded-full bg-stone-100">
+      <div className="h-full rounded-full bg-mint" style={{ width: `${insight.paidPercent}%` }} />
+    </div>
+    <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
+      <input className="input" type="date" value={pay?.date || insight.nextDueDate || iso()} onChange={(e) => onPayChange({ date: e.target.value })} />
+      <input className="input" type="number" placeholder="Amount" value={pay?.amount || ''} onChange={(e) => onPayChange({ amount: e.target.value })} />
+      <button onClick={onPaid} className="btn">Mark Paid</button>
+      <button onClick={onOpen} className="icon-btn text-coral">View infographic</button>
+    </div>
+  </div>;
+}
+
+function LoanInsightModal({ loan, onClose, onPaid }) {
+  const insight = loanInsights(loan);
+  const pieData = [
+    { name: 'Paid', value: insight.totalPaid },
+    { name: 'Remaining', value: insight.remaining }
+  ];
+  const costData = [
+    { name: 'Principal', value: insight.principal },
+    { name: 'Interest', value: insight.estimatedInterest }
+  ];
+  const enteredDifference = insight.calculatedEmi ? Number(loan.emi_amount || 0) - insight.calculatedEmi : 0;
+  return <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/45 px-3 py-6 md:px-6" role="dialog" aria-modal="true">
+    <section className="mx-auto max-w-6xl rounded-[1.5rem] bg-paper shadow-phone">
+      <div className="sticky top-0 z-10 flex items-start justify-between gap-3 rounded-t-[1.5rem] border-b border-stone-200 bg-white p-4 md:p-5">
+        <div>
+          <p className="text-sm font-semibold text-coral">Loan infographic</p>
+          <h2 className="text-2xl font-bold">{loan.loan_name}</h2>
+          <p className="text-sm text-stone-500">{loan.lender || 'Lender not set'} • EMI deduction day {loan.due_day || '-'}</p>
+        </div>
+        <button className="icon-btn h-10 w-10 px-0" onClick={onClose} title="Close"><X size={18} /></button>
+      </div>
+      <div className="grid gap-4 p-4 lg:grid-cols-[.85fr_1.15fr] md:p-5">
+        <Panel title="Repayment Progress">
+          <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+            <ProgressRing percent={insight.paidPercent} label="Paid" />
+            <div className="grid grid-cols-2 gap-3">
+              <Metric label="Paid amount" value={money(insight.totalPaid)} tone="text-mint" />
+              <Metric label="Remaining" value={money(insight.remaining)} tone="text-coral" />
+              <Metric label="EMIs paid" value={`${loan.emis_paid || 0}`} />
+              <Metric label="EMIs left" value={`${loan.remaining_emi_count || 0}`} />
+            </div>
+          </div>
+          <div className="mt-4 h-56">
+            <ResponsiveContainer><PieChart><Pie data={pieData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={82}>{pieData.map((_, i) => <Cell key={i} fill={i === 0 ? '#36b7a0' : '#ff4f45'} />)}</Pie><Tooltip formatter={(v) => money(v)} /></PieChart></ResponsiveContainer>
+          </div>
+        </Panel>
+
+        <Panel title="Exact EMI Calculator">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Metric label="Principal" value={money(insight.principal)} />
+            <Metric label="Interest rate" value={`${Number(loan.interest_rate || 0)}% p.a.`} />
+            <Metric label="Tenure" value={`${insight.tenureMonths} months`} />
+            <Metric label="Calculated EMI" value={money(insight.calculatedEmi)} tone="text-coral" />
+            <Metric label="Entered EMI" value={money(loan.emi_amount)} />
+            <Metric label="Difference" value={money(enteredDifference)} tone={enteredDifference >= 0 ? 'text-mint' : 'text-coral'} />
+          </div>
+          <div className="mt-4 rounded-2xl bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Total repayment estimate</p>
+                <p className="text-xs text-stone-500">Based on reducing-balance EMI formula</p>
+              </div>
+              <b>{money(insight.totalPayable)}</b>
+            </div>
+            <div className="h-56">
+              <ResponsiveContainer><BarChart data={costData}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="value" fill="#ff4f45" radius={[10, 10, 0, 0]} /></BarChart></ResponsiveContainer>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Timeline & Payment Action">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Metric label="Start date" value={dateIn(loan.start_date)} />
+            <Metric label="End date" value={dateIn(loan.end_date)} />
+            <Metric label="Next deduction" value={insight.nextDueDate ? dateIn(insight.nextDueDate) : 'All caught up'} tone="text-coral" />
+          </div>
+          <div className="mt-4 grid gap-3 rounded-2xl bg-white p-4 md:grid-cols-[1fr_1fr_auto]">
+            <input className="input" type="date" defaultValue={insight.nextDueDate || iso()} id={`paid-date-${loan.id}`} />
+            <input className="input" type="number" defaultValue={loan.emi_amount || insight.calculatedEmi || ''} id={`paid-amount-${loan.id}`} />
+            <button className="btn" onClick={() => onPaid(document.getElementById(`paid-date-${loan.id}`).value, document.getElementById(`paid-amount-${loan.id}`).value)}>Mark EMI Paid</button>
+          </div>
+        </Panel>
+
+        <Panel title="Loan Notes">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Metric label="Loan type" value={loan.loan_type || '-'} />
+            <Metric label="Account" value={loan.account_name || '-'} />
+          </div>
+          <p className="mt-4 rounded-2xl bg-white p-4 text-sm text-stone-600">{loan.notes || 'No notes added.'}</p>
+        </Panel>
+      </div>
+    </section>
+  </div>;
+}
+
+function Metric({ label, value, tone = 'text-ink' }) {
+  return <div className="rounded-2xl border border-stone-100 bg-white p-3">
+    <p className="text-xs font-medium text-stone-500">{label}</p>
+    <p className={`mt-1 text-lg font-bold ${tone}`}>{value}</p>
+  </div>;
+}
+
+function ProgressRing({ percent, label }) {
+  const radius = 72;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (Math.min(100, Math.max(0, percent)) / 100) * circumference;
+  return <div className="grid place-items-center">
+    <div className="relative h-44 w-44">
+      <svg viewBox="0 0 180 180" className="h-full w-full -rotate-90">
+        <circle cx="90" cy="90" r={radius} fill="none" stroke="#f1f1f1" strokeWidth="16" />
+        <circle cx="90" cy="90" r={radius} fill="none" stroke="#36b7a0" strokeWidth="16" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} />
+      </svg>
+      <div className="absolute inset-0 grid place-items-center text-center">
+        <div><p className="text-3xl font-bold">{percent}%</p><p className="text-sm text-stone-500">{label}</p></div>
+      </div>
+    </div>
+  </div>;
 }
 
 function Accounts() {
@@ -726,6 +881,63 @@ function Chart({ data }) { return <div className="h-60 md:h-72"><ResponsiveConta
 function MiniBars({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><BarChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="value" fill="#ff4f45" radius={[10, 10, 0, 0]} /></BarChart></ResponsiveContainer></div>; }
 function PieBlock({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius={95} label>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => money(v)} /></PieChart></ResponsiveContainer></div>; }
 function iso() { return new Date().toISOString().slice(0, 10); }
+function loanInsights(loan) {
+  const principal = Number(loan.total_amount || 0);
+  const totalPaid = Number(loan.total_paid || 0);
+  const remaining = Math.max(0, Number(loan.remaining_amount ?? (principal - totalPaid)));
+  const tenureMonths = loanTenureMonths(loan.start_date, loan.end_date);
+  const calculatedEmi = calculateEmi(principal, Number(loan.interest_rate || 0), tenureMonths);
+  const totalPayable = calculatedEmi * tenureMonths;
+  const estimatedInterest = Math.max(0, totalPayable - principal);
+  const paidPercent = principal > 0 ? Math.min(100, Math.round((totalPaid / principal) * 100)) : 0;
+  return {
+    principal,
+    totalPaid,
+    remaining,
+    tenureMonths,
+    calculatedEmi,
+    totalPayable,
+    estimatedInterest,
+    paidPercent,
+    nextDueDate: nextLoanDueDate(loan)
+  };
+}
+function loanTenureMonths(start, end) {
+  if (!start || !end) return 0;
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) return 0;
+  return Math.max(1, ((endDate.getFullYear() - startDate.getFullYear()) * 12) + (endDate.getMonth() - startDate.getMonth()) + 1);
+}
+function calculateEmi(principal, annualRate, months) {
+  if (!principal || !months) return 0;
+  const monthlyRate = Number(annualRate || 0) / 12 / 100;
+  if (!monthlyRate) return principal / months;
+  const compound = (1 + monthlyRate) ** months;
+  return principal * monthlyRate * compound / (compound - 1);
+}
+function nextLoanDueDate(loan) {
+  if (!loan?.start_date || !loan?.end_date) return '';
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  const start = new Date(loan.start_date);
+  const end = new Date(loan.end_date);
+  let cursor = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+  if (cursor < new Date(start.getFullYear(), start.getMonth(), 1)) cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  for (let index = 0; index < 18; index += 1) {
+    const due = dueDateForMonth(cursor.getFullYear(), cursor.getMonth(), loan.due_day || start.getDate());
+    if (due >= start && due <= end && due >= todayDate) return formatDateInput(due);
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return '';
+}
+function dueDateForMonth(year, monthIndex, day) {
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  return new Date(year, monthIndex, Math.min(Number(day || 1), lastDay));
+}
+function formatDateInput(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 function notificationPermission() {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
   return Notification.permission;
