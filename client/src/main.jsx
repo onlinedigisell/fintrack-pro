@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, PiggyBank, Plus, RefreshCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, WalletCards } from 'lucide-react';
+import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, Menu, PiggyBank, Plus, RefreshCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, WalletCards, X } from 'lucide-react';
 import { api, exportCsv, getMyProfile, importCsv, isSupabaseMode, listProfiles, supabase, supabaseConfigError, updateProfile } from './api';
 import { ErrorBoundary } from './ErrorBoundary';
 import './styles.css';
@@ -36,6 +36,7 @@ function useData(path, deps = []) {
 function Shell({ profile }) {
   const initialPage = new URLSearchParams(window.location.search).get('page') || 'Dashboard';
   const [page, setPage] = useState(initialPage);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [month, setMonth] = useState(defaultMonth);
   const [year, setYear] = useState(defaultYear);
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -46,6 +47,9 @@ function Shell({ profile }) {
     ['Reports', LineChart], ['Settings', Settings]
   ];
   if (profile?.role === 'admin') nav.push(['Users', ShieldCheck]);
+  const mobileTabs = nav.filter(([name]) => ['Dashboard', 'Expenses', 'Accounts', 'Reports'].includes(name));
+  const morePages = nav.filter(([name]) => !mobileTabs.some(([tab]) => tab === name));
+  const isMorePage = morePages.some(([name]) => name === page);
   useEffect(() => {
     const standaloneMode = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone;
     setStandalone(Boolean(standaloneMode));
@@ -62,38 +66,46 @@ function Shell({ profile }) {
     await installPrompt.userChoice;
     setInstallPrompt(null);
   }
+  function go(nextPage) {
+    setPage(nextPage);
+    setMoreOpen(false);
+  }
   return (
     <div className="min-h-dvh bg-[#111] text-ink">
       <div className="mx-auto min-h-dvh max-w-[1500px] bg-paper md:rounded-none">
-      <aside className="fixed bottom-0 left-0 right-0 z-30 border-t border-stone-200 bg-white/95 pb-safe shadow-[0_-16px_35px_rgba(0,0,0,0.08)] backdrop-blur md:top-6 md:bottom-6 md:left-6 md:right-auto md:h-auto md:w-72 md:rounded-[2rem] md:border md:border-stone-100 md:pb-0 md:shadow-phone">
+      <aside className="fixed bottom-0 left-0 right-0 z-30 hidden border-t border-stone-200 bg-white/95 pb-safe shadow-[0_-16px_35px_rgba(0,0,0,0.08)] backdrop-blur md:top-6 md:bottom-6 md:left-6 md:right-auto md:block md:h-auto md:w-72 md:rounded-[1.5rem] md:border md:border-stone-100 md:pb-0 md:shadow-phone">
         <div className="hidden px-6 py-6 md:block">
           <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-coral text-white shadow-soft"><IndianRupee size={22} /></div>
+            <div className="grid h-11 w-11 place-items-center rounded-xl bg-coral text-white shadow-soft"><IndianRupee size={22} /></div>
             <div><h1 className="text-xl font-bold">FinTrack Pro</h1><p className="text-xs text-coral">easy money manager</p></div>
           </div>
         </div>
         <nav className="flex overflow-x-auto px-2 py-2 md:block md:px-3">
           {nav.map(([name, Icon]) => (
-            <button key={name} onClick={() => setPage(name)} title={name} className={`nav-btn ${page === name ? 'bg-coral text-white shadow-soft' : 'text-stone-500 hover:bg-blush hover:text-coral'}`}>
+            <button key={name} onClick={() => go(name)} title={name} className={`nav-btn ${page === name ? 'bg-coral text-white shadow-soft' : 'text-stone-500 hover:bg-blush hover:text-coral'}`}>
               <Icon size={18} /><span>{name}</span>
             </button>
           ))}
         </nav>
       </aside>
-      <main className="pb-28 md:ml-80 md:pb-0">
-        <header className="sticky top-0 z-20 border-b border-white/70 bg-paper/90 px-4 pb-4 pt-safe backdrop-blur md:px-8">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-coral">Money Manager</p>
-              <h2 className="text-2xl font-bold tracking-tight">{page}</h2>
+      <MobileBottomNav tabs={mobileTabs} page={page} isMorePage={isMorePage} onPage={go} onMore={() => setMoreOpen(true)} />
+      {moreOpen && <MoreSheet pages={morePages} active={page} onClose={() => setMoreOpen(false)} onPage={go} />}
+      <main className="pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:ml-80 md:pb-0">
+        <header className="sticky top-0 z-20 border-b border-stone-200/70 bg-paper/95 px-4 pb-3 pt-safe backdrop-blur md:px-8 md:pb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-coral md:text-sm md:normal-case md:tracking-normal">FinTrack Pro</p>
+              <h2 className="truncate text-2xl font-bold tracking-tight md:text-3xl">{page}</h2>
               {isSupabaseMode && <p className="mt-1 text-xs font-semibold text-mint">{standalone ? 'Mobile app mode' : 'Online database connected'} {profile?.role === 'admin' ? '- Admin' : ''}</p>}
             </div>
-            <div className="flex gap-2">
-              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="input w-28">{Array.from({ length: 12 }, (_, i) => <option value={i + 1} key={i}>{new Date(2026, i).toLocaleString('en-IN', { month: 'short' })}</option>)}</select>
-              <input value={year} onChange={(e) => setYear(Number(e.target.value))} type="number" className="input w-24" />
+            <div className="flex shrink-0 gap-2">
               {installPrompt && <button className="icon-btn hidden sm:inline-flex" onClick={installApp}><Download size={16} /> Install</button>}
-              {isSupabaseMode && <button className="icon-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>}
+              {isSupabaseMode && <button className="icon-btn px-3" onClick={() => supabase.auth.signOut()}>Sign out</button>}
             </div>
+          </div>
+          <div className="mt-3 grid grid-cols-[1fr_6.5rem] gap-2 sm:flex sm:justify-end">
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="input h-11">{Array.from({ length: 12 }, (_, i) => <option value={i + 1} key={i}>{new Date(2026, i).toLocaleString('en-IN', { month: 'long' })}</option>)}</select>
+            <input value={year} onChange={(e) => setYear(Number(e.target.value))} type="number" className="input h-11 sm:w-28" />
           </div>
         </header>
         <section className="px-3 py-4 sm:px-4 md:px-8 md:py-6">
@@ -113,6 +125,43 @@ function Shell({ profile }) {
       </div>
     </div>
   );
+}
+
+function MobileBottomNav({ tabs, page, isMorePage, onPage, onMore }) {
+  return <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-stone-200 bg-white/96 px-2 pb-safe pt-2 shadow-[0_-14px_34px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
+    {tabs.map(([name, Icon]) => (
+      <button key={name} onClick={() => onPage(name)} className={`bottom-tab ${page === name ? 'text-coral' : 'text-stone-500'}`} title={name}>
+        <Icon size={20} />
+        <span>{name}</span>
+      </button>
+    ))}
+    <button onClick={onMore} className={`bottom-tab ${isMorePage ? 'text-coral' : 'text-stone-500'}`} title="More">
+      <Menu size={20} />
+      <span>More</span>
+    </button>
+  </nav>;
+}
+
+function MoreSheet({ pages, active, onClose, onPage }) {
+  return <div className="fixed inset-0 z-50 flex items-end bg-black/35 px-3 pb-safe pt-20 md:hidden" onClick={onClose}>
+    <section className="mt-auto rounded-[1.25rem] bg-white p-4 shadow-phone" onClick={(event) => event.stopPropagation()}>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-bold">More</h3>
+          <p className="text-sm text-stone-500">All finance tools</p>
+        </div>
+        <button className="icon-btn h-10 w-10 px-0" onClick={onClose} title="Close"><X size={18} /></button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {pages.map(([name, Icon]) => (
+          <button key={name} onClick={() => onPage(name)} className={`sheet-btn ${active === name ? 'border-coral bg-blush text-coral' : 'border-stone-200 bg-white text-ink'}`}>
+            <Icon size={18} />
+            <span>{name}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  </div>;
 }
 
 function AuthGate() {
@@ -277,11 +326,11 @@ function Dashboard({ month, year }) {
     ['EMI', data.emiPaid, Landmark, 'bg-[#4d5588]'], ['Balance', data.remaining, WalletCards, 'bg-mint'],
     ['Invested', data.investments, PiggyBank, 'bg-saffron']
   ];
-  return <div className="space-y-6">
+  return <div className="space-y-4 md:space-y-6">
     <DashboardShowcase data={data} month={month} year={year} />
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{cards.map(([label, value, Icon, color]) => <Stat key={label} label={label} value={money(value)} Icon={Icon} color={color} />)}</div>
-    <div className="grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
-      <Panel title="Account-wise Balance"><div className="grid gap-3 sm:grid-cols-2">{(data.accounts || []).map((a) => <div className="rounded-3xl border border-stone-100 bg-[#fafafa] p-4" key={a.id}><p className="text-sm text-stone-500">{a.type}</p><h3 className="font-semibold">{a.name}</h3><p className="mt-2 text-xl font-bold">{money(a.balance)}</p></div>)}</div></Panel>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-5">{cards.map(([label, value, Icon, color]) => <Stat key={label} label={label} value={money(value)} Icon={Icon} color={color} />)}</div>
+    <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
+      <Panel title="Account-wise Balance"><div className="grid gap-3 sm:grid-cols-2">{(data.accounts || []).map((a) => <div className="rounded-2xl border border-stone-100 bg-[#fafafa] p-3 md:p-4" key={a.id}><p className="text-xs text-stone-500 md:text-sm">{a.type}</p><h3 className="font-semibold">{a.name}</h3><p className="mt-2 text-lg font-bold md:text-xl">{money(a.balance)}</p></div>)}</div></Panel>
       <Panel title="Upcoming Reminders" action={<button onClick={load} className="icon-btn"><RefreshCcw size={16} /></button>}><List rows={data.reminders || []} render={(r) => <><b>{r.title}</b><span>{money(r.amount)} due {dateIn(r.due_date)}</span></>} /></Panel>
     </div>
     <Panel title="Recent Transactions"><List rows={data.recent || []} render={(r) => <><b>{r.kind}: {r.title}</b><span>{money(r.amount)} on {dateIn(r.date)} {r.notes ? `- ${r.notes}` : ''}</span></>} /></Panel>
@@ -296,23 +345,23 @@ function DashboardShowcase({ data, month, year }) {
     { name: 'EMI', value: data.emiPaid || 0 },
     { name: 'Invest', value: data.investments || 0 }
   ];
-  return <section className="overflow-hidden rounded-[2rem] bg-white p-5 shadow-soft md:p-8">
+  return <section className="overflow-hidden rounded-[1.25rem] bg-white p-4 shadow-soft md:rounded-[1.75rem] md:p-8">
     <div className="grid items-center gap-8 lg:grid-cols-[.9fr_1.1fr]">
       <div className="max-w-xl">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-coral text-white"><IndianRupee size={25} /></div>
+        <div className="mb-4 flex items-center gap-3 md:mb-5">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-coral text-white md:h-12 md:w-12"><IndianRupee size={24} /></div>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight md:text-5xl">FinTrack Pro</h1>
-            <p className="mt-1 text-lg text-stone-600"><span className="font-semibold text-coral">The easiest way</span> to manage personal finances</p>
+            <h1 className="text-2xl font-bold tracking-tight md:text-5xl">FinTrack Pro</h1>
+            <p className="mt-1 text-sm text-stone-600 md:text-lg"><span className="font-semibold text-coral">Professional</span> personal finance control</p>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-3xl bg-blush p-4"><p className="text-xs font-semibold text-coral">Remaining</p><p className="mt-1 text-2xl font-bold">{money(data.remaining)}</p></div>
-          <div className="rounded-3xl bg-[#f2f7ff] p-4"><p className="text-xs font-semibold text-blue-600">Month</p><p className="mt-1 text-2xl font-bold">{month}/{year}</p></div>
-          <div className="rounded-3xl bg-[#f3fbf8] p-4"><p className="text-xs font-semibold text-mint">Accounts</p><p className="mt-1 text-2xl font-bold">{data.accounts?.length || 0}</p></div>
+        <div className="grid gap-2 sm:grid-cols-3 md:gap-3">
+          <div className="rounded-2xl bg-blush p-3 md:p-4"><p className="text-xs font-semibold text-coral">Remaining</p><p className="mt-1 text-xl font-bold md:text-2xl">{money(data.remaining)}</p></div>
+          <div className="rounded-2xl bg-[#f2f7ff] p-3 md:p-4"><p className="text-xs font-semibold text-blue-600">Month</p><p className="mt-1 text-xl font-bold md:text-2xl">{month}/{year}</p></div>
+          <div className="rounded-2xl bg-[#f3fbf8] p-3 md:p-4"><p className="text-xs font-semibold text-mint">Accounts</p><p className="mt-1 text-xl font-bold md:text-2xl">{data.accounts?.length || 0}</p></div>
         </div>
       </div>
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="hidden gap-5 lg:grid lg:grid-cols-2">
         <PhonePreview title="Easy Content Access" tone="white">
           <div className="rounded-2xl border border-stone-100 bg-white p-3 shadow-soft">
             <div className="mb-3 flex items-center justify-between text-xs"><span>Transaction</span><span>{dateIn(`${year}-${String(month).padStart(2, '0')}-01`)}</span></div>
@@ -424,7 +473,7 @@ function Reminders() {
 
 function Reports({ month, year }) {
   const { data } = useData(`/reports?month=${month}&year=${year}`, [month, year]);
-  return <div className="space-y-6">
+  return <div className="space-y-4 md:space-y-6">
     <ReportShowcase data={data} month={month} year={year} />
     <div className="grid gap-6 xl:grid-cols-2">
     <Panel title="Monthly Expense Report"><Chart data={data.byCategory || []} /></Panel>
@@ -524,7 +573,7 @@ function CrudPage({ title, table, rows, load, fields, initial, extra, renderExtr
     </Panel>
     <Panel title={title}>
       <div className="grid gap-3">
-        {rows.map((row) => <article className="rounded border border-stone-200 bg-white p-4" key={row.id}>
+        {rows.map((row) => <article className="rounded-xl border border-stone-200 bg-white p-3 shadow-sm md:rounded-2xl md:p-4" key={row.id}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div><h3 className="font-semibold">{row.name || row.title || row.loan_name || row.category || `${title} #${row.id}`}</h3><p className="text-sm text-stone-500">{summary(row)}</p>{renderExtraRow?.(row)}</div>
             <div className="flex gap-2"><button className="icon-btn" onClick={() => { setEditing(row.id); setForm({ ...initial, ...row }); }}>Edit</button><button className="icon-btn text-coral" onClick={() => del(row.id)}><Trash2 size={16} /></button></div>
@@ -537,7 +586,7 @@ function CrudPage({ title, table, rows, load, fields, initial, extra, renderExtr
 }
 
 function Field({ name, type, label, value, onChange, options = [] }) {
-  if (type === 'checkbox') return <label className="flex items-center gap-2 rounded border border-stone-200 bg-white px-3 py-3 text-sm"><input type="checkbox" checked={!!Number(value)} onChange={(e) => onChange(e.target.checked ? 1 : 0)} /> {label}</label>;
+  if (type === 'checkbox') return <label className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-3 text-sm"><input type="checkbox" checked={!!Number(value)} onChange={(e) => onChange(e.target.checked ? 1 : 0)} /> {label}</label>;
   if (type === 'select') return <label className="text-sm font-medium">{label}<select required className="input mt-1" value={value ?? ''} onChange={(e) => onChange(e.target.value)}><option value="">Select</option>{options.map((o) => Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o} value={o}>{o}</option>)}</select></label>;
   return <label className="text-sm font-medium">{label}<input required={['amount', 'date', 'name', 'title'].some((part) => name.includes(part))} className="input mt-1" type={type} value={value ?? ''} onChange={(e) => onChange(e.target.value)} /></label>;
 }
@@ -545,23 +594,23 @@ function Field({ name, type, label, value, onChange, options = [] }) {
 function TransactionHeader({ rows, month, year, filters, setFilters, accounts, apps }) {
   const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
   return <div className="space-y-4">
-    <section className="overflow-hidden rounded-[2rem] bg-white shadow-soft">
-      <div className="bg-coral px-5 pb-5 pt-6 text-white">
+    <section className="overflow-hidden rounded-[1.25rem] bg-white shadow-soft md:rounded-[2rem]">
+      <div className="bg-coral px-4 pb-4 pt-5 text-white md:px-5 md:pb-5 md:pt-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm opacity-80">Transaction</p>
-            <h3 className="text-2xl font-bold">Expense</h3>
+            <h3 className="text-xl font-bold md:text-2xl">Expense</h3>
           </div>
-          <div className="rounded-2xl bg-white/15 px-3 py-2 text-sm">{new Date(year, month - 1).toLocaleString('en-IN', { month: 'short', year: 'numeric' })}</div>
+          <div className="rounded-xl bg-white/15 px-3 py-2 text-sm md:rounded-2xl">{new Date(year, month - 1).toLocaleString('en-IN', { month: 'short', year: 'numeric' })}</div>
         </div>
-        <div className="mt-5 grid grid-cols-3 rounded-2xl bg-white/15 p-3 text-center text-sm">
-          <span>Daily</span><span className="rounded-xl bg-white text-coral">Monthly</span><span>Summary</span>
+        <div className="mt-4 grid grid-cols-3 rounded-xl bg-white/15 p-2 text-center text-xs md:mt-5 md:rounded-2xl md:p-3 md:text-sm">
+          <span>Daily</span><span className="rounded-lg bg-white py-1 text-coral md:rounded-xl">Monthly</span><span>Summary</span>
         </div>
       </div>
-      <div className="grid gap-3 p-5 sm:grid-cols-3">
-        <div className="rounded-3xl bg-blush p-4"><p className="text-xs font-semibold text-coral">Expense Count</p><p className="mt-1 text-2xl font-bold">{rows.length}</p></div>
-        <div className="rounded-3xl bg-[#f8f8f8] p-4"><p className="text-xs font-semibold text-stone-500">Total Paid</p><p className="mt-1 text-2xl font-bold">{money(total)}</p></div>
-        <div className="rounded-3xl bg-[#f3fbf8] p-4"><p className="text-xs font-semibold text-mint">Average</p><p className="mt-1 text-2xl font-bold">{money(rows.length ? total / rows.length : 0)}</p></div>
+      <div className="grid grid-cols-3 gap-2 p-3 md:gap-3 md:p-5">
+        <div className="rounded-2xl bg-blush p-3 md:p-4"><p className="text-xs font-semibold text-coral">Count</p><p className="mt-1 text-xl font-bold md:text-2xl">{rows.length}</p></div>
+        <div className="rounded-2xl bg-[#f8f8f8] p-3 md:p-4"><p className="text-xs font-semibold text-stone-500">Paid</p><p className="mt-1 text-xl font-bold md:text-2xl">{money(total)}</p></div>
+        <div className="rounded-2xl bg-[#f3fbf8] p-3 md:p-4"><p className="text-xs font-semibold text-mint">Avg</p><p className="mt-1 text-xl font-bold md:text-2xl">{money(rows.length ? total / rows.length : 0)}</p></div>
       </div>
     </section>
     <Filters filters={filters} setFilters={setFilters} accounts={accounts} apps={apps} />
@@ -570,7 +619,7 @@ function TransactionHeader({ rows, month, year, filters, setFilters, accounts, a
 
 function Filters({ filters, setFilters, accounts, apps }) {
   const active = [filters.category, filters.payment_app_id, filters.account_id].filter(Boolean).length;
-  return <section className="rounded-[1.75rem] bg-[#34395f] p-4 text-white shadow-soft">
+  return <section className="rounded-[1.25rem] bg-[#34395f] p-3.5 text-white shadow-soft md:rounded-[1.75rem] md:p-4">
     <div className="mb-3 flex items-center justify-between">
       <h3 className="font-semibold">Reinforced Filter</h3>
       <button onClick={() => setFilters({ category: '', account_id: '', payment_app_id: '' })} className="rounded-xl bg-coral px-4 py-2 text-sm font-semibold">Clear {active ? `(${active})` : ''}</button>
@@ -586,22 +635,22 @@ function Filters({ filters, setFilters, accounts, apps }) {
 function ReportShowcase({ data, month, year }) {
   const category = data.byCategory || [];
   const salary = data.salaryRemaining || {};
-  return <section className="overflow-hidden rounded-[2rem] bg-white shadow-soft">
-    <div className="bg-coral px-5 py-5 text-white">
+  return <section className="overflow-hidden rounded-[1.25rem] bg-white shadow-soft md:rounded-[2rem]">
+    <div className="bg-coral px-4 py-4 text-white md:px-5 md:py-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm opacity-80">Stats</p>
-          <h3 className="text-2xl font-bold">Aesthetically Improved Charts</h3>
+          <h3 className="text-xl font-bold md:text-2xl">Expense Charts</h3>
         </div>
-        <div className="rounded-2xl bg-white/15 px-4 py-2 text-sm">{new Date(year, month - 1).toLocaleString('en-IN', { month: 'short yyyy' })}</div>
+        <div className="rounded-xl bg-white/15 px-3 py-2 text-sm md:rounded-2xl md:px-4">{new Date(year, month - 1).toLocaleString('en-IN', { month: 'short yyyy' })}</div>
       </div>
     </div>
-    <div className="grid gap-5 p-5 lg:grid-cols-[.85fr_1.15fr]">
-      <div className="rounded-[1.75rem] border border-stone-100 bg-[#fafafa] p-4">
-        <div className="h-64"><ResponsiveContainer><PieChart><Pie data={category} dataKey="value" nameKey="name" outerRadius={86} label>{category.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => money(v)} /></PieChart></ResponsiveContainer></div>
+    <div className="grid gap-4 p-4 lg:grid-cols-[.85fr_1.15fr] md:gap-5 md:p-5">
+      <div className="rounded-2xl border border-stone-100 bg-[#fafafa] p-3 md:rounded-[1.75rem] md:p-4">
+        <div className="h-56 md:h-64"><ResponsiveContainer><PieChart><Pie data={category} dataKey="value" nameKey="name" outerRadius={86} label>{category.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => money(v)} /></PieChart></ResponsiveContainer></div>
       </div>
       <div className="space-y-3">
-        <div className="grid grid-cols-3 rounded-3xl bg-[#fafafa] p-4 text-center">
+        <div className="grid grid-cols-3 rounded-2xl bg-[#fafafa] p-3 text-center md:p-4">
           <div><p className="text-xs text-stone-500">Income</p><b className="text-mint">{money(salary.salary)}</b></div>
           <div><p className="text-xs text-stone-500">Expenses</p><b className="text-coral">{money(salary.expenses)}</b></div>
           <div><p className="text-xs text-stone-500">Total</p><b>{money(salary.remaining)}</b></div>
@@ -621,12 +670,12 @@ function TransferForm({ accounts, onDone }) {
   return <Panel title="Account Transfer"><form onSubmit={save} className="grid gap-3 md:grid-cols-5"><Field name="from_account_id" type="select" label="From" value={form.from_account_id} options={accounts.map((a) => [a.id, a.name])} onChange={(v) => setForm({ ...form, from_account_id: v })} /><Field name="to_account_id" type="select" label="To" value={form.to_account_id} options={accounts.map((a) => [a.id, a.name])} onChange={(v) => setForm({ ...form, to_account_id: v })} /><Field name="amount" type="number" label="Amount" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} /><Field name="date" type="date" label="Date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} /><button className="btn self-end">Transfer</button></form></Panel>;
 }
 
-function Panel({ title, children, action }) { return <section className="soft-panel"><div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-lg font-bold tracking-tight">{title}</h3>{action}</div>{children}</section>; }
-function Stat({ label, value, Icon, color }) { return <div className="rounded-[1.75rem] border border-stone-100 bg-white p-4 shadow-soft"><div className={`mb-4 grid h-11 w-11 place-items-center rounded-2xl ${color} text-white`}><Icon size={20} /></div><p className="text-sm font-medium text-stone-500">{label}</p><p className="mt-1 text-2xl font-bold tracking-tight">{value}</p></div>; }
+function Panel({ title, children, action }) { return <section className="soft-panel"><div className="mb-3 flex items-center justify-between gap-3 md:mb-4"><h3 className="text-base font-bold tracking-tight md:text-lg">{title}</h3>{action}</div>{children}</section>; }
+function Stat({ label, value, Icon, color }) { return <div className="rounded-[1.25rem] border border-stone-100 bg-white p-3 shadow-soft md:rounded-[1.75rem] md:p-4"><div className={`mb-3 grid h-9 w-9 place-items-center rounded-xl ${color} text-white md:mb-4 md:h-11 md:w-11 md:rounded-2xl`}><Icon size={18} /></div><p className="text-xs font-medium text-stone-500 md:text-sm">{label}</p><p className="mt-1 break-words text-xl font-bold tracking-tight md:text-2xl">{value}</p></div>; }
 function List({ rows, render }) { return <div className="space-y-2">{rows.map((row, i) => <div className="transaction-row flex flex-col gap-1 text-sm" key={row.id || i}>{render(row)}</div>)} {!rows.length && <p className="py-4 text-sm text-stone-500">Nothing to show.</p>}</div>; }
-function Chart({ data }) { return <div className="h-72"><ResponsiveContainer><AreaChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Area type="monotone" dataKey="value" stroke="#ff4f45" fill="#ffe1df" /></AreaChart></ResponsiveContainer></div>; }
-function MiniBars({ data }) { return <div className="h-72"><ResponsiveContainer><BarChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="value" fill="#ff4f45" radius={[10, 10, 0, 0]} /></BarChart></ResponsiveContainer></div>; }
-function PieBlock({ data }) { return <div className="h-72"><ResponsiveContainer><PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius={95} label>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => money(v)} /></PieChart></ResponsiveContainer></div>; }
+function Chart({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><AreaChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Area type="monotone" dataKey="value" stroke="#ff4f45" fill="#ffe1df" /></AreaChart></ResponsiveContainer></div>; }
+function MiniBars({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><BarChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="value" fill="#ff4f45" radius={[10, 10, 0, 0]} /></BarChart></ResponsiveContainer></div>; }
+function PieBlock({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius={95} label>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => money(v)} /></PieChart></ResponsiveContainer></div>; }
 function iso() { return new Date().toISOString().slice(0, 10); }
 function normalize(form, fields) {
   const out = { ...form };
