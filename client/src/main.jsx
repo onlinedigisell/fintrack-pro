@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Bell, CreditCard, Download, Home, IndianRupee, Landmark, LineChart, PiggyBank, Plus, RefreshCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, WalletCards } from 'lucide-react';
 import { api, exportCsv, getMyProfile, importCsv, isSupabaseMode, listProfiles, supabase, updateProfile } from './api';
+import { ErrorBoundary } from './ErrorBoundary';
 import './styles.css';
 
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -19,12 +20,17 @@ const colors = ['#0f9f86', '#e35d43', '#d89b16', '#2563eb', '#7c3aed', '#0891b2'
 function useData(path, deps = []) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const load = () => {
     setLoading(true);
-    api(path).then(setData).finally(() => setLoading(false));
+    setError('');
+    api(path).then(setData).catch((err) => {
+      setError(err.message || 'Unable to load data');
+      setData([]);
+    }).finally(() => setLoading(false));
   };
   useEffect(load, deps);
-  return { data, loading, load };
+  return { data, loading, error, load };
 }
 
 function Shell({ profile }) {
@@ -93,8 +99,10 @@ function AuthGate() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(isSupabaseMode);
+  const [error, setError] = useState('');
   async function loadProfile(nextSession) {
     setSession(nextSession);
+    setError('');
     if (!nextSession) {
       setProfile(null);
       setLoading(false);
@@ -102,6 +110,9 @@ function AuthGate() {
     }
     try {
       setProfile(await getMyProfile());
+    } catch (err) {
+      setError(err.message || 'Unable to load account profile');
+      setProfile(null);
     } finally {
       setLoading(false);
     }
@@ -114,6 +125,7 @@ function AuthGate() {
   }, []);
   if (!isSupabaseMode) return <Shell />;
   if (loading) return <div className="grid min-h-screen place-items-center bg-paper text-ink">Loading FinTrack Pro...</div>;
+  if (error) return <AccessMessage title="Setup needs attention" message={error} detail="Run supabase/complete-setup.sql in your Supabase SQL Editor, then refresh this page." />;
   if (!session) return <LoginScreen />;
   if (profile?.status === 'pending') return <AccessMessage title="Waiting for admin approval" message="Your account is created, but the admin must approve it before you can use FinTrack Pro." />;
   if (profile?.status === 'blocked') return <AccessMessage title="Access blocked" message="Your account access is blocked. Contact the FinTrack Pro admin." />;
@@ -121,12 +133,13 @@ function AuthGate() {
   return <Shell profile={profile} />;
 }
 
-function AccessMessage({ title, message }) {
+function AccessMessage({ title, message, detail }) {
   return <div className="grid min-h-screen place-items-center bg-[#111] px-4">
     <section className="w-full max-w-md rounded-[2rem] bg-white p-6 text-center shadow-phone">
       <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-coral text-white"><ShieldCheck size={26} /></div>
       <h1 className="text-2xl font-bold">{title}</h1>
       <p className="mt-2 text-sm text-stone-600">{message}</p>
+      {detail && <p className="mt-3 rounded-2xl bg-blush px-4 py-3 text-sm text-coral">{detail}</p>}
       <button className="btn mt-5 w-full" onClick={() => supabase.auth.signOut()}>Sign out</button>
     </section>
   </div>;
@@ -527,4 +540,4 @@ function summary(row) {
   return parts.join(' - ') || row.type || '';
 }
 
-createRoot(document.getElementById('root')).render(<AuthGate />);
+createRoot(document.getElementById('root')).render(<ErrorBoundary><AuthGate /></ErrorBoundary>);
