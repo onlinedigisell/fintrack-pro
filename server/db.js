@@ -240,13 +240,16 @@ export function dashboard(month, year) {
   const emiPaid = db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM emi_payments WHERE strftime('%m', payment_date)=? AND strftime('%Y', payment_date)=?").get(monthText, y).total;
   const investments = db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM investments WHERE strftime('%m', date)=? AND strftime('%Y', date)=?").get(monthText, y).total;
   const reminders = db.prepare("SELECT * FROM reminders WHERE completed = 0 AND date(due_date) >= date('now') ORDER BY date(due_date) LIMIT 6").all();
+  const loans = list('loans');
+  const emiPayments = list('emi_payments');
+  const emiReminders = upcomingEmiReminders(loans, emiPayments);
   const recent = db.prepare(`
     SELECT 'Expense' AS kind, date, amount, category AS title, notes FROM expenses
     UNION ALL SELECT 'Investment', date, amount, name, notes FROM investments
     UNION ALL SELECT 'EMI', payment_date, amount, loan_name, emi_payments.notes FROM emi_payments JOIN loans ON loans.id = emi_payments.loan_id
     ORDER BY date DESC LIMIT 10
   `).all();
-  return { salary, expenses, emiPaid, investments, remaining: salary - expenses - emiPaid - investments, accounts: accountBalances(), reminders, recent };
+  return { salary, expenses, emiPaid, investments, remaining: salary - expenses - emiPaid - investments, accounts: accountBalances(), reminders, emiReminders, recent };
 }
 
 export function reports(month, year) {
@@ -288,4 +291,70 @@ export function searchTransactions(term) {
     UNION ALL SELECT 'Reminder', id, due_date, amount, title, notes FROM reminders WHERE title LIKE ? OR notes LIKE ?
     ORDER BY date DESC LIMIT 100
   `).all(q, q, q, q, q, q);
+}
+
+function upcomingEmiReminders(loans, payments) {
+  const today = startOfToday();
+  const until = new Date(today);
+  until.setDate(until.getDate() + 45);
+  return loans
+    .map((loan) => {
+      const dueDate = nextUnpaidEmiDate(loan, payments, today, until);
+      if (!dueDate) return null;
+      return {
+        id: `emi-${loan.id}-${dueDate}`,
+        type: 'emi',
+        loan_id: loan.id,
+        loan_name: loan.loan_name,
+        lender: loan.lender,
+        amount: loan.emi_amount,
+        due_date: dueDate,
+        due_day: loan.due_day,
+        account_id: loan.account_id,
+        account_name: loan.account_name,
+        notes: `Auto EMI deduction day ${loan.due_day || 1}`
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+    .slice(0, 8);
+}
+
+function nextUnpaidEmiDate(loan, payments, today, until) {
+  if (!loan.start_date || !loan.end_date) return null;
+  const start = new Date(loan.start_date);
+  const end = new Date(loan.end_date);
+  let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (cursor < new Date(start.getFullYear(), start.getMonth(), 1)) {
+    cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  }
+  for (let index = 0; index < 18; index += 1) {
+    const due = dateForDay(cursor.getFullYear(), cursor.getMonth(), loan.due_day || start.getDate());
+    if (due >= start && due <= end && due >= today && due <= until && !emiPaidForMonth(payments, loan.id, due)) {
+      return toIsoDate(due);
+    }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return null;
+}
+
+function dateForDay(year, monthIndex, day) {
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  return new Date(year, monthIndex, Math.min(Number(day || 1), lastDay));
+}
+
+function emiPaidForMonth(payments, loanId, due) {
+  return payments.some((payment) => Number(payment.loan_id) === Number(loanId)
+    && new Date(payment.payment_date).getMonth() === due.getMonth()
+    && new Date(payment.payment_date).getFullYear() === due.getFullYear());
+}
+
+function startOfToday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function toIsoDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }

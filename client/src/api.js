@@ -206,12 +206,13 @@ async function dashboard(month, year) {
     .filter((row) => !Number(row.completed) && new Date(row.due_date) >= startOfToday())
     .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
     .slice(0, 6);
+  const emiReminders = upcomingEmiReminders(loans, emiPayments, accounts);
   const recent = [
     ...expenses.map((row) => ({ kind: 'Expense', date: row.date, amount: row.amount, title: row.category, notes: row.notes })),
     ...investments.map((row) => ({ kind: 'Investment', date: row.date, amount: row.amount, title: row.name, notes: row.notes })),
     ...emiPayments.map((row) => ({ kind: 'EMI', date: row.payment_date, amount: row.amount, title: loans.find((loan) => loan.id === row.loan_id)?.loan_name || 'EMI', notes: row.notes }))
   ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
-  return { salary, expenses: expenseTotal, emiPaid, investments: investmentTotal, remaining: salary - expenseTotal - emiPaid - investmentTotal, accounts, reminders: upcoming, recent };
+  return { salary, expenses: expenseTotal, emiPaid, investments: investmentTotal, remaining: salary - expenseTotal - emiPaid - investmentTotal, accounts, reminders: upcoming, emiReminders, recent };
 }
 
 async function reports(month, year) {
@@ -352,6 +353,65 @@ function startOfToday() {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
   return date;
+}
+
+function upcomingEmiReminders(loans, payments, accounts) {
+  const todayDate = startOfToday();
+  const until = new Date(todayDate);
+  until.setDate(until.getDate() + 45);
+  return (loans || [])
+    .map((loan) => {
+      const dueDate = nextUnpaidEmiDate(loan, payments, todayDate, until);
+      if (!dueDate) return null;
+      const account = accounts.find((row) => row.id === loan.account_id);
+      return {
+        id: `emi-${loan.id}-${dueDate}`,
+        type: 'emi',
+        loan_id: loan.id,
+        loan_name: loan.loan_name,
+        lender: loan.lender,
+        amount: loan.emi_amount,
+        due_date: dueDate,
+        due_day: loan.due_day,
+        account_id: loan.account_id,
+        account_name: account?.name,
+        notes: `Auto EMI deduction day ${loan.due_day || 1}`
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+    .slice(0, 8);
+}
+
+function nextUnpaidEmiDate(loan, payments, todayDate, until) {
+  if (!loan?.start_date || !loan?.end_date) return null;
+  const endDate = new Date(loan.end_date);
+  const startDate = new Date(loan.start_date);
+  let cursor = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+  if (cursor < new Date(startDate.getFullYear(), startDate.getMonth(), 1)) {
+    cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  }
+  for (let index = 0; index < 18; index += 1) {
+    const due = dateForDay(cursor.getFullYear(), cursor.getMonth(), loan.due_day || startDate.getDate());
+    if (due >= startDate && due <= endDate && due >= todayDate && due <= until && !emiPaidForMonth(payments, loan.id, due)) {
+      return toIsoDate(due);
+    }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return null;
+}
+
+function dateForDay(year, monthIndex, day) {
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  return new Date(year, monthIndex, Math.min(Number(day || 1), lastDay));
+}
+
+function emiPaidForMonth(payments, loanId, dueDate) {
+  return (payments || []).some((payment) => Number(payment.loan_id) === Number(loanId) && sameMonth(payment.payment_date, dueDate.getMonth() + 1, dueDate.getFullYear()));
+}
+
+function toIsoDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 async function currentUserId() {

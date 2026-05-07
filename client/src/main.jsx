@@ -321,11 +321,33 @@ function LoginScreen() {
 
 function Dashboard({ month, year }) {
   const { data, load } = useData(`/dashboard?month=${month}&year=${year}`, [month, year]);
+  const [notificationStatus, setNotificationStatus] = useState(notificationPermission());
   const cards = [
     ['Income', data.salary, IndianRupee, 'bg-coral'], ['Expenses', data.expenses, CreditCard, 'bg-[#ff7c97]'],
     ['EMI', data.emiPaid, Landmark, 'bg-[#4d5588]'], ['Balance', data.remaining, WalletCards, 'bg-mint'],
     ['Invested', data.investments, PiggyBank, 'bg-saffron']
   ];
+  useEffect(() => {
+    if (notificationStatus === 'granted') notifyUpcomingEmis(data.emiReminders || []);
+  }, [notificationStatus, JSON.stringify((data.emiReminders || []).map((row) => row.id))]);
+  async function enableEmiNotifications() {
+    if (!('Notification' in window)) return setNotificationStatus('unsupported');
+    const permission = await Notification.requestPermission();
+    setNotificationStatus(permission);
+    if (permission === 'granted') notifyUpcomingEmis(data.emiReminders || [], true);
+  }
+  async function markEmiPaid(emi) {
+    await api(`/loans/${emi.loan_id}/pay`, {
+      method: 'POST',
+      body: JSON.stringify({
+        payment_date: emi.due_date,
+        amount: emi.amount,
+        account_id: emi.account_id,
+        notes: `Paid from EMI reminder for ${dateIn(emi.due_date)}`
+      })
+    });
+    load();
+  }
   return <div className="space-y-4 md:space-y-6">
     <DashboardShowcase data={data} month={month} year={year} />
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-5">{cards.map(([label, value, Icon, color]) => <Stat key={label} label={label} value={money(value)} Icon={Icon} color={color} />)}</div>
@@ -333,7 +355,34 @@ function Dashboard({ month, year }) {
       <Panel title="Account-wise Balance"><div className="grid gap-3 sm:grid-cols-2">{(data.accounts || []).map((a) => <div className="rounded-2xl border border-stone-100 bg-[#fafafa] p-3 md:p-4" key={a.id}><p className="text-xs text-stone-500 md:text-sm">{a.type}</p><h3 className="font-semibold">{a.name}</h3><p className="mt-2 text-lg font-bold md:text-xl">{money(a.balance)}</p></div>)}</div></Panel>
       <Panel title="Upcoming Reminders" action={<button onClick={load} className="icon-btn"><RefreshCcw size={16} /></button>}><List rows={data.reminders || []} render={(r) => <><b>{r.title}</b><span>{money(r.amount)} due {dateIn(r.due_date)}</span></>} /></Panel>
     </div>
+    <Panel title="EMI Deduction Alerts" action={notificationStatus !== 'granted' && <button onClick={enableEmiNotifications} className="icon-btn"><Bell size={16} /> Enable</button>}>
+      <EmiReminderList rows={data.emiReminders || []} onPaid={markEmiPaid} notificationStatus={notificationStatus} />
+    </Panel>
     <Panel title="Recent Transactions"><List rows={data.recent || []} render={(r) => <><b>{r.kind}: {r.title}</b><span>{money(r.amount)} on {dateIn(r.date)} {r.notes ? `- ${r.notes}` : ''}</span></>} /></Panel>
+  </div>;
+}
+
+function EmiReminderList({ rows, onPaid, notificationStatus }) {
+  if (!rows.length) return <p className="py-4 text-sm text-stone-500">No upcoming unpaid EMI deductions in the next 45 days.</p>;
+  return <div className="space-y-3">
+    {notificationStatus === 'denied' && <p className="rounded-xl bg-blush px-3 py-2 text-sm text-coral">Browser notifications are blocked. Enable notifications from browser site settings.</p>}
+    {notificationStatus === 'unsupported' && <p className="rounded-xl bg-blush px-3 py-2 text-sm text-coral">This browser does not support notifications.</p>}
+    {rows.map((emi) => {
+      const dueIn = daysUntil(emi.due_date);
+      return <article className="transaction-row" key={emi.id}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <b>{emi.loan_name}</b>
+              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${dueIn <= 3 ? 'bg-blush text-coral' : 'bg-[#f3fbf8] text-mint'}`}>{dueIn === 0 ? 'Due today' : `${dueIn} day${dueIn === 1 ? '' : 's'} left`}</span>
+            </div>
+            <p className="mt-1 text-sm text-stone-500">{money(emi.amount)} deduction on {dateIn(emi.due_date)}{emi.account_name ? ` from ${emi.account_name}` : ''}</p>
+            {emi.lender && <p className="text-xs text-stone-400">{emi.lender}</p>}
+          </div>
+          <button className="btn" onClick={() => onPaid(emi)}>Mark EMI Paid</button>
+        </div>
+      </article>;
+    })}
   </div>;
 }
 
@@ -419,7 +468,7 @@ function Loans() {
   const { data, load } = useData('/loans/summary/all', []);
   const accounts = useData('/accounts', []);
   const [pay, setPay] = useState({});
-  const fields = [['loan_name', 'text', 'Loan name'], ['loan_type', 'text', 'Loan type'], ['total_amount', 'number', 'Total amount'], ['emi_amount', 'number', 'EMI amount'], ['start_date', 'date', 'Start date'], ['end_date', 'date', 'End date'], ['interest_rate', 'number', 'Interest %'], ['lender', 'text', 'Lender/bank'], ['account_id', 'select', 'Account', accounts.data.map((a) => [a.id, a.name])], ['due_day', 'number', 'Due day'], ['notes', 'text', 'Notes']];
+  const fields = [['loan_name', 'text', 'Loan name'], ['loan_type', 'text', 'Loan type'], ['total_amount', 'number', 'Total amount'], ['emi_amount', 'number', 'EMI amount'], ['start_date', 'date', 'Start date'], ['end_date', 'date', 'End date'], ['interest_rate', 'number', 'Interest %'], ['lender', 'text', 'Lender/bank'], ['account_id', 'select', 'Account', accounts.data.map((a) => [a.id, a.name])], ['due_day', 'number', 'EMI deduction day'], ['notes', 'text', 'Notes']];
   async function markPaid(loan) {
     await api(`/loans/${loan.id}/pay`, { method: 'POST', body: JSON.stringify({ payment_date: pay[loan.id]?.date || iso(), amount: pay[loan.id]?.amount || loan.emi_amount, account_id: loan.account_id, notes: 'Marked paid' }) });
     load();
@@ -677,6 +726,30 @@ function Chart({ data }) { return <div className="h-60 md:h-72"><ResponsiveConta
 function MiniBars({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><BarChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#f1e4e2" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="value" fill="#ff4f45" radius={[10, 10, 0, 0]} /></BarChart></ResponsiveContainer></div>; }
 function PieBlock({ data }) { return <div className="h-60 md:h-72"><ResponsiveContainer><PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius={95} label>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => money(v)} /></PieChart></ResponsiveContainer></div>; }
 function iso() { return new Date().toISOString().slice(0, 10); }
+function notificationPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
+  return Notification.permission;
+}
+function notifyUpcomingEmis(rows, force = false) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  rows
+    .filter((row) => daysUntil(row.due_date) <= 3)
+    .forEach((row) => {
+      const key = `fintrack-emi-notified-${row.id}-${iso()}`;
+      if (!force && localStorage.getItem(key)) return;
+      new Notification('FinTrack Pro EMI Reminder', {
+        body: `${row.loan_name}: ${money(row.amount)} due on ${dateIn(row.due_date)}`
+      });
+      localStorage.setItem(key, '1');
+    });
+}
+function daysUntil(value) {
+  const target = new Date(value);
+  target.setHours(0, 0, 0, 0);
+  const current = new Date();
+  current.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.ceil((target - current) / 86400000));
+}
 function normalize(form, fields) {
   const out = { ...form };
   fields.forEach(([name, type]) => {
