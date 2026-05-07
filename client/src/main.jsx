@@ -846,7 +846,7 @@ function ReportShowcase({ data, month, year }) {
           <p className="text-sm opacity-80">Stats</p>
           <h3 className="text-xl font-bold md:text-2xl">Expense Charts</h3>
         </div>
-        <div className="rounded-xl bg-white/15 px-3 py-2 text-sm md:rounded-2xl md:px-4">{new Date(year, month - 1).toLocaleString('en-IN', { month: 'short yyyy' })}</div>
+        <div className="rounded-xl bg-white/15 px-3 py-2 text-sm md:rounded-2xl md:px-4">{new Date(year, month - 1).toLocaleString('en-IN', { month: 'short', year: 'numeric' })}</div>
       </div>
     </div>
     <div className="grid gap-4 p-4 lg:grid-cols-[.85fr_1.15fr] md:gap-5 md:p-5">
