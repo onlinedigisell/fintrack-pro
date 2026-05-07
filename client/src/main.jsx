@@ -167,10 +167,24 @@ function LoginScreen() {
   const [message, setMessage] = useState('');
   async function submit(mode) {
     setMessage('');
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) {
+      setMessage('Enter both email and password.');
+      return;
+    }
     const { error } = mode === 'signup'
-      ? await supabase.auth.signUp({ email, password })
-      : await supabase.auth.signInWithPassword({ email, password });
-    if (error) setMessage(error.message);
+      ? await supabase.auth.signUp({ email: cleanEmail, password, options: { emailRedirectTo: window.location.origin } })
+      : await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+    if (error) {
+      const lower = error.message.toLowerCase();
+      if (lower.includes('anonymous sign-ins are disabled')) {
+        setMessage('Enable Email sign-in and Allow new users to sign up in Supabase Authentication settings.');
+      } else if (lower.includes('email signups are disabled')) {
+        setMessage('Supabase email signups are disabled. Turn on Email provider and allow signup.');
+      } else {
+        setMessage(error.message);
+      }
+    }
     else setMessage(mode === 'signup' ? 'Account created. If email confirmation is enabled, check your inbox.' : 'Signing in...');
   }
   return <div className="grid min-h-screen place-items-center bg-[#111] px-4">
