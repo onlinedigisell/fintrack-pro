@@ -72,6 +72,7 @@ function Shell({ profile }) {
   function go(nextPage) {
     setPage(nextPage);
     setMoreOpen(false);
+    window.history.replaceState({}, '', `?page=${encodeURIComponent(nextPage)}`);
   }
   return (
     <div className="min-h-dvh bg-slate-950 text-ink">
@@ -118,7 +119,7 @@ function Shell({ profile }) {
           </div>
         </header>
         <section className="px-3 py-4 sm:px-4 md:px-8 md:py-6">
-          {page === 'Dashboard' && <Dashboard month={month} year={year} />}
+          {page === 'Dashboard' && <Dashboard month={month} year={year} onNavigate={go} />}
           {page === 'Salary' && <Salary month={month} year={year} />}
           {page === 'Expenses' && <Expenses month={month} year={year} />}
           {page === 'Credit Cards' && <CreditCards month={month} year={year} />}
@@ -355,9 +356,18 @@ function LoginScreen() {
   </div>;
 }
 
-function Dashboard({ month, year }) {
+function Dashboard({ month, year, onNavigate }) {
   const { data, load } = useData(`/dashboard?month=${month}&year=${year}`, [month, year]);
   const [notificationStatus, setNotificationStatus] = useState(notificationPermission());
+  const quickActions = [
+    ['Add Salary', 'Salary'],
+    ['Add Expense', 'Expenses'],
+    ['Add EMI', 'EMI / Loans'],
+    ['Add Investment', 'Investments'],
+    ['Transfer Account', 'Accounts'],
+    ['Add Reminder', 'Reminders'],
+    ['Add Credit Card Transaction', 'Credit Cards']
+  ];
   const cards = [
     ['Income', data.salary, IndianRupee, 'bg-coral'], ['Expenses', data.expenses, CreditCard, 'bg-slate-700'],
     ['EMI', data.emiPaid, Landmark, 'bg-[#4d5588]'], ['Balance', data.remaining, WalletCards, Number(data.remaining || 0) < 0 ? 'bg-danger' : 'bg-mint'],
@@ -390,7 +400,7 @@ function Dashboard({ month, year }) {
     <AIInsightsPanel insights={dashboardInsights(data)} />
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">{cards.map(([label, value, Icon, color]) => <Stat key={label} label={label} value={money(value)} Icon={Icon} color={color} />)}</div>
     <Panel title="Quick Actions">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">{['Add Salary', 'Add Expense', 'Add EMI', 'Add Investment', 'Transfer Account', 'Add Reminder', 'Add Credit Card Transaction'].map((label) => <button className="icon-btn justify-start" key={label}><Plus size={16} />{label}</button>)}</div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">{quickActions.map(([label, target]) => <button type="button" className="icon-btn justify-start" key={label} onClick={() => onNavigate(target)}><Plus size={16} />{label}</button>)}</div>
     </Panel>
     <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
       <Panel title="Account-wise Balance"><div className="grid gap-3 sm:grid-cols-2">{(data.accounts || []).map((a) => <div className="rounded-2xl border border-stone-100 bg-[#fafafa] p-3 md:p-4" key={a.id}><p className="text-xs text-stone-500 md:text-sm">{a.type}</p><h3 className="font-semibold">{a.name}</h3><p className="mt-2 text-lg font-bold md:text-xl">{money(a.balance)}</p></div>)}</div></Panel>
@@ -584,16 +594,37 @@ function Loans() {
   const { data, load } = useData('/loans/summary/all', []);
   const accounts = useData('/accounts', []);
   const [pay, setPay] = useState({});
+  const [bulkPay, setBulkPay] = useState({});
   const [selectedLoan, setSelectedLoan] = useState(null);
   const fields = [['loan_name', 'text', 'Loan name'], ['loan_type', 'text', 'Loan type'], ['total_amount', 'number', 'Total amount'], ['emi_amount', 'number', 'EMI amount'], ['start_date', 'date', 'Start date'], ['end_date', 'date', 'End date'], ['interest_rate', 'number', 'Interest %'], ['lender', 'text', 'Lender/bank'], ['account_id', 'select', 'Account', accounts.data.map((a) => [a.id, a.name])], ['due_day', 'number', 'EMI deduction day'], ['notes', 'text', 'Notes']];
   async function markPaid(loan, date, amount) {
     await api(`/loans/${loan.id}/pay`, { method: 'POST', body: JSON.stringify({ payment_date: date || pay[loan.id]?.date || iso(), amount: amount || pay[loan.id]?.amount || loan.emi_amount, account_id: loan.account_id, notes: 'Marked paid' }) });
     load();
   }
+  async function markBulkPaid(loan) {
+    const draft = bulkPay[loan.id] || {};
+    const count = Math.max(1, Math.min(60, Number(draft.count || 5)));
+    const firstDate = new Date(draft.start_date || loan.start_date || iso());
+    const amount = draft.amount || loan.emi_amount;
+    for (let index = 0; index < count; index += 1) {
+      const paidOn = dueDateForMonth(firstDate.getFullYear(), firstDate.getMonth() + index, loan.due_day || firstDate.getDate());
+      await api(`/loans/${loan.id}/pay`, {
+        method: 'POST',
+        body: JSON.stringify({
+          payment_date: formatDateInput(paidOn),
+          amount,
+          account_id: loan.account_id,
+          notes: `Old EMI payment ${index + 1}/${count}`
+        })
+      });
+    }
+    setBulkPay({ ...bulkPay, [loan.id]: { start_date: formatDateInput(firstDate), count: 5, amount: '' } });
+    load();
+  }
   return <>
     <CrudPage title="EMI / Loan Tracker" table="loans" rows={data} load={load} fields={fields} initial={{ loan_name: '', loan_type: 'Personal', total_amount: '', emi_amount: '', start_date: iso(), end_date: iso(), interest_rate: '', lender: '', account_id: '', due_day: 5, notes: '' }}
       extra={<LoanPortfolioSummary loans={data} />}
-      renderExtraRow={(loan) => <LoanRowInsights loan={loan} pay={pay[loan.id]} onPayChange={(next) => setPay({ ...pay, [loan.id]: { ...pay[loan.id], ...next } })} onPaid={() => markPaid(loan)} onOpen={() => setSelectedLoan(loan)} />} />
+      renderExtraRow={(loan, actions) => <LoanRowInsights loan={loan} pay={pay[loan.id]} bulk={bulkPay[loan.id]} onPayChange={(next) => setPay({ ...pay, [loan.id]: { ...pay[loan.id], ...next } })} onBulkChange={(next) => setBulkPay({ ...bulkPay, [loan.id]: { ...bulkPay[loan.id], ...next } })} onPaid={() => markPaid(loan)} onBulkPaid={() => markBulkPaid(loan)} onOpen={() => setSelectedLoan(loan)} onEdit={actions.edit} />} />
     {selectedLoan && <LoanInsightModal loan={selectedLoan} onClose={() => setSelectedLoan(null)} onPaid={(date, amount) => markPaid(selectedLoan, date, amount)} />}
   </>;
 }
@@ -618,7 +649,7 @@ function LoanPortfolioSummary({ loans }) {
   </Panel>;
 }
 
-function LoanRowInsights({ loan, pay, onPayChange, onPaid, onOpen }) {
+function LoanRowInsights({ loan, pay, bulk, onPayChange, onBulkChange, onPaid, onBulkPaid, onOpen, onEdit }) {
   const insight = loanInsights(loan);
   return <div className="mt-3 space-y-3 text-sm">
     <div className="grid gap-2 sm:grid-cols-4">
@@ -635,6 +666,21 @@ function LoanRowInsights({ loan, pay, onPayChange, onPaid, onOpen }) {
       <input className="input" type="number" placeholder="Amount" value={pay?.amount || ''} onChange={(e) => onPayChange({ amount: e.target.value })} />
       <button onClick={onPaid} className="btn">Mark Paid</button>
       <button onClick={onOpen} className="icon-btn text-coral">View infographic</button>
+    </div>
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <b>Add old EMI payments</b>
+          <p className="text-xs text-slate-500">Use this if you already paid earlier months. For 5 months, keep Months as 5 and select the first paid EMI date.</p>
+        </div>
+        <button type="button" onClick={onEdit} className="icon-btn">Edit Loan</button>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[1fr_.7fr_1fr_auto]">
+        <input className="input" type="date" value={bulk?.start_date || loan.start_date || iso()} onChange={(e) => onBulkChange({ start_date: e.target.value })} />
+        <input className="input" type="number" min="1" max="60" placeholder="Months" value={bulk?.count || 5} onChange={(e) => onBulkChange({ count: e.target.value })} />
+        <input className="input" type="number" placeholder="EMI amount" value={bulk?.amount || ''} onChange={(e) => onBulkChange({ amount: e.target.value })} />
+        <button type="button" onClick={onBulkPaid} className="btn">Add Past EMIs</button>
+      </div>
     </div>
   </div>;
 }
@@ -874,6 +920,11 @@ function UsersAdmin() {
 function CrudPage({ title, table, rows, load, fields, initial, extra, renderExtraRow }) {
   const [form, setForm] = useState(initial);
   const [editing, setEditing] = useState(null);
+  function startEdit(row) {
+    setEditing(row.id);
+    setForm({ ...initial, ...row });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   async function save(e) {
     e.preventDefault();
     const body = normalize(form, fields);
@@ -898,8 +949,8 @@ function CrudPage({ title, table, rows, load, fields, initial, extra, renderExtr
       <div className="grid gap-3">
         {rows.map((row) => <article className="rounded-xl border border-stone-200 bg-white p-3 shadow-sm md:rounded-2xl md:p-4" key={row.id}>
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div><h3 className="font-semibold">{row.name || row.title || row.loan_name || row.category || `${title} #${row.id}`}</h3><p className="text-sm text-stone-500">{summary(row)}</p>{renderExtraRow?.(row)}</div>
-            <div className="flex gap-2"><button className="icon-btn" onClick={() => { setEditing(row.id); setForm({ ...initial, ...row }); }}>Edit</button><button className="icon-btn text-coral" onClick={() => del(row.id)}><Trash2 size={16} /></button></div>
+            <div><h3 className="font-semibold">{row.name || row.title || row.loan_name || row.category || `${title} #${row.id}`}</h3><p className="text-sm text-stone-500">{summary(row)}</p>{renderExtraRow?.(row, { edit: () => startEdit(row) })}</div>
+            <div className="flex gap-2"><button className="icon-btn" onClick={() => startEdit(row)}>Edit</button><button className="icon-btn text-coral" onClick={() => del(row.id)}><Trash2 size={16} /></button></div>
           </div>
         </article>)}
         {!rows.length && <p className="py-6 text-center text-stone-500">No records found.</p>}
